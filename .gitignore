@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Environment Secrets (DO NOT LEAK THESE TO GITHUB)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Firebase caches
+.firebase/
+*-debug.log
