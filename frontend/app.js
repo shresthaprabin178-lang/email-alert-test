@@ -6,7 +6,7 @@ document.getElementById('sendBtn').addEventListener('click', async () => {
     try {
         // NOTE: Replace this URL with your live Render Web Service URL after deployment
         /*const BACKEND_URL = 'http://localhost:5000/api/send-alert'; */
-        const BACKEND_URL = 'https://email-alert-backend-z097.onrender.com';
+        const BACKEND_URL = 'https://email-alert-backend-z097.onrender.com/api/send-alert';
 
         const response = await fetch(BACKEND_URL, {
             method: 'POST',
