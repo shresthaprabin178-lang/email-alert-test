@@ -16,7 +16,7 @@ exports.sendScheduledAlert = onSchedule("every 5 minutes", async (event) => {
 
   const mailOptions = {
     from: process.env.EMAIL_USER,
-    to: "YOUR_TEST_RECEIVER_EMAIL@gmail.com", // Destination test address
+    to: "shresthaprabin178@gmail.com", // Destination test address
     subject: "⏰ Firebase Independent Cron Alert",
     text: "Verification complete! This notification confirms that background engine alerts remain online while frontend and backend nodes are fully shut down."
   };
