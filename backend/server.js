@@ -1,11 +1,27 @@
 const express = require('express');
 const cors = require('cors');
 const nodemailer = require('nodemailer');
+const axios = require('axios');
+const cheerio = require('cheerio');
+const path = require('path');
+const cron = require('node-cron');
+const admin = require('firebase-admin');
 require('dotenv').config();
+
+// --- Firebase Admin Setup ---
+const serviceAccount = require('./serviceAccountKey.json');
+const { getFirestore } = require('firebase-admin/firestore');
+admin.initializeApp({
+    credential: admin.cert(serviceAccount)
+});
+const db = getFirestore();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Serve frontend static files
+app.use(express.static(path.join(__dirname, '../frontend')));
 
 // Set up email sender blueprint
 const transporter = nodemailer.createTransport({
@@ -16,20 +32,72 @@ const transporter = nodemailer.createTransport({
     }
 });
 
+// --- Shared Scraper Function ---
+async function scrapeLivePrices() {
+    const url = 'https://www.sharesansar.com/today-share-price';
+    const response = await axios.get(url, {
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+        },
+        timeout: 15000
+    });
+
+    const html = response.data;
+    const $ = cheerio.load(html);
+    
+    const stocks = [];
+    
+    $('table.table-bordered tbody tr').each((index, element) => {
+        const tds = $(element).find('td');
+        if (tds.length > 5) {
+            const symbol = $(tds[1]).text().trim();
+            const ltp = $(tds[6]).text().trim();
+            const diff = $(tds[8]).text().trim();
+            const percDiff = $(tds[7]).text().trim();
+            const high = $(tds[4]).text().trim();
+            const low = $(tds[5]).text().trim();
+            
+            if(symbol) {
+                stocks.push({
+                    symbol,
+                    ltp: ltp || '0',
+                    diff: diff || '0',
+                    percDiff: percDiff || '0',
+                    high: high || '0',
+                    low: low || '0'
+                });
+            }
+        }
+    });
+
+    return stocks;
+}
+
 // Test route to ensure server works
 app.get('/', (req, res) => {
     res.send('Backend is running successfully!');
 });
 
+// Web Scraper Endpoint for Live Prices (used by frontend)
+app.get('/api/live-prices', async (req, res) => {
+    try {
+        const stocks = await scrapeLivePrices();
+        res.status(200).json({ success: true, data: stocks });
+    } catch (error) {
+        console.error("Scraping error:", error.message);
+        res.status(500).json({ success: false, error: 'Failed to fetch live prices.' });
+    }
+});
+
 // Trigger an alert manually
 app.post('/api/send-alert', async (req, res) => {
-    const { email, message } = req.body;
+    const { email, message, subject } = req.body;
     
     try {
         await transporter.sendMail({
             from: process.env.EMAIL_USER,
             to: email,
-            subject: '🚨 Manual Alert Notification',
+            subject: subject || '🚨 Manual Alert Notification',
             text: message || 'This is a test alert from your Render backend!'
         });
         res.status(200).json({ success: true, message: 'Email sent successfully!' });
@@ -38,8 +106,88 @@ app.post('/api/send-alert', async (req, res) => {
     }
 });
 
-// FIX: Listen on PORT and bind to '0.0.0.0' for cloud deployment
+// =========================================================
+// BACKGROUND ALERT CHECKER (runs every 5 minutes)
+// This runs automatically even when you are not using the app.
+// As long as this server is alive on Render, it will keep checking.
+// =========================================================
+async function checkAlerts() {
+    console.log(`[${new Date().toISOString()}] 🔄 Background alert checker running...`);
+
+    try {
+        // 1. Scrape live prices
+        const stocks = await scrapeLivePrices();
+        
+        // Build a quick lookup map: { "NABIL": 1234.56, ... }
+        const priceMap = {};
+        stocks.forEach(s => {
+            const price = parseFloat(s.ltp.replace(/,/g, ''));
+            if (!isNaN(price)) priceMap[s.symbol] = price;
+        });
+
+        console.log(`   Scraped ${Object.keys(priceMap).length} stock prices.`);
+
+        // 2. Get all transactions that have active (untriggered) alerts
+        const snapshot = await db.collection('transactions')
+            .where('alertTriggered', '==', false)
+            .get();
+
+        if (snapshot.empty) {
+            console.log('   No pending alerts to check.');
+            return;
+        }
+
+        console.log(`   Found ${snapshot.size} active alert(s) to check.`);
+
+        // 3. Compare each transaction's target/stopLoss against live price
+        for (const doc of snapshot.docs) {
+            const tx = doc.data();
+            const ltp = priceMap[tx.symbol];
+
+            if (!ltp) continue; // Stock not found in today's data
+
+            let alertMsg = null;
+
+            if (tx.targetPrice && ltp >= tx.targetPrice) {
+                alertMsg = `🎯 TARGET HIT!\n\nStock: ${tx.symbol}\nCurrent Price: Rs ${ltp}\nYour Target: Rs ${tx.targetPrice}\n\nTransaction Details:\nType: ${tx.type}\nQty: ${tx.qty}\nBought at: Rs ${tx.price}`;
+            } else if (tx.stopLoss && ltp <= tx.stopLoss) {
+                alertMsg = `⚠️ STOP LOSS HIT!\n\nStock: ${tx.symbol}\nCurrent Price: Rs ${ltp}\nYour Stop Loss: Rs ${tx.stopLoss}\n\nTransaction Details:\nType: ${tx.type}\nQty: ${tx.qty}\nBought at: Rs ${tx.price}`;
+            }
+
+            if (alertMsg) {
+                // Send Email Alert
+                await transporter.sendMail({
+                    from: process.env.EMAIL_USER,
+                    to: tx.email,
+                    subject: `📊 Stock Alert: ${tx.symbol} - ${tx.targetPrice && ltp >= tx.targetPrice ? 'Target Hit' : 'Stop Loss Hit'}`,
+                    text: alertMsg
+                });
+
+                // Mark as triggered so we don't send again
+                await db.collection('transactions').doc(doc.id).update({
+                    alertTriggered: true
+                });
+
+                console.log(`   ✅ Alert sent for ${tx.symbol} to ${tx.email}`);
+            }
+        }
+
+        console.log(`[${new Date().toISOString()}] ✅ Alert check complete.`);
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] ❌ Alert checker error:`, error.message);
+    }
+}
+
+// Schedule: Run every 5 minutes (cron expression: */5 * * * *)
+cron.schedule('*/5 * * * *', () => {
+    checkAlerts();
+});
+
+// Also run once immediately on server startup
+checkAlerts();
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Backend running perfectly on port ${PORT}`);
+    console.log(`Background alert checker scheduled to run every 5 minutes.`);
 });

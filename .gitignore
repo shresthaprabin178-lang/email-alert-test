@@ -12,3 +12,6 @@ node_modules/
 # Firebase caches
 .firebase/
 *-debug.log
+
+# Firebase Service Account Key (NEVER push this to GitHub)
+serviceAccountKey.json
