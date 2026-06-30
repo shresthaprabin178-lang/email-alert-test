@@ -8,12 +8,23 @@ const cron = require('node-cron');
 const admin = require('firebase-admin');
 require('dotenv').config();
 
-// --- Firebase Admin Setup ---
+/*// --- Firebase Admin Setup ---
 const serviceAccount = require('./serviceAccountKey.json');
 const { getFirestore } = require('firebase-admin/firestore');
 admin.initializeApp({
     credential: admin.cert(serviceAccount)
 });
+const db = getFirestore();*/
+// --- Firebase Admin Setup ---
+const { getFirestore } = require('firebase-admin/firestore');
+
+// This reads the raw JSON you pasted into the Render Environment Variable
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+});
+
 const db = getFirestore();
 
 const app = express();
