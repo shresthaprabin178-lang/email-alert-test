@@ -318,7 +318,9 @@ async function fetchLivePrices() {
 
     try {
         // Will point to our backend endpoint
-        const response = await fetch('http://localhost:5000/api/live-prices');
+        /*const response = await fetch('http://localhost:5000/api/live-prices');*/
+        // To this:
+        const response = await fetch('https://email-alert-backend-z097.onrender.com/api/live-prices');
         if (!response.ok) throw new Error("Backend error");
 
         const data = await response.json();

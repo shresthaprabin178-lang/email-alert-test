@@ -25,7 +25,7 @@ app.use(express.static(path.join(__dirname, '../frontend')));
 
 // Set up email sender blueprint
 const transporter = nodemailer.createTransport({
-    service: 'gmail', 
+    service: 'gmail',
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
@@ -44,9 +44,9 @@ async function scrapeLivePrices() {
 
     const html = response.data;
     const $ = cheerio.load(html);
-    
+
     const stocks = [];
-    
+
     $('table.table-bordered tbody tr').each((index, element) => {
         const tds = $(element).find('td');
         if (tds.length > 5) {
@@ -56,8 +56,8 @@ async function scrapeLivePrices() {
             const percDiff = $(tds[7]).text().trim();
             const high = $(tds[4]).text().trim();
             const low = $(tds[5]).text().trim();
-            
-            if(symbol) {
+
+            if (symbol) {
                 stocks.push({
                     symbol,
                     ltp: ltp || '0',
@@ -92,7 +92,7 @@ app.get('/api/live-prices', async (req, res) => {
 // Trigger an alert manually
 app.post('/api/send-alert', async (req, res) => {
     const { email, message, subject } = req.body;
-    
+
     try {
         await transporter.sendMail({
             from: process.env.EMAIL_USER,
@@ -117,7 +117,7 @@ async function checkAlerts() {
     try {
         // 1. Scrape live prices
         const stocks = await scrapeLivePrices();
-        
+
         // Build a quick lookup map: { "NABIL": 1234.56, ... }
         const priceMap = {};
         stocks.forEach(s => {
