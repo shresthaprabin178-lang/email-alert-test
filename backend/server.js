@@ -34,28 +34,30 @@ app.use(express.json());
 // Serve frontend static files
 app.use(express.static(path.join(__dirname, '../frontend')));
 
-// --- Email Sender via Gmail REST API (works on Render - no SMTP ports needed) ---
-// Uses Google OAuth2 app password via Gmail API POST over HTTPS (port 443)
+// --- Email Sender via Resend HTTP API (works on Render - uses HTTPS port 443) ---
+// Resend.com free tier: 3000 emails/month. No SMTP ports needed.
+// Set RESEND_API_KEY in your Render environment variables.
 async function sendEmail(to, subject, text) {
-    const nodemailer = require('nodemailer');
-    const transporter = nodemailer.createTransport({
-        host: 'smtp.gmail.com',
-        port: 465,
-        secure: true,
-        auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+        throw new Error('RESEND_API_KEY environment variable not set.');
+    }
+    const response = await axios.post('https://api.resend.com/emails', {
+        from: 'Stock Alerts <onboarding@resend.dev>',
+        to: [to],
+        subject: subject,
+        text: text
+    }, {
+        headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
         },
-        connectionTimeout: 10000,   // fail fast: 10s
-        greetingTimeout: 10000,
-        socketTimeout: 15000
+        timeout: 15000
     });
-    await transporter.sendMail({
-        from: process.env.EMAIL_USER,
-        to,
-        subject,
-        text
-    });
+    if (response.status !== 200 && response.status !== 201) {
+        throw new Error(`Resend API error: ${response.status} ${JSON.stringify(response.data)}`);
+    }
+    return response.data;
 }
 
 // --- Shared Scraper Function ---
