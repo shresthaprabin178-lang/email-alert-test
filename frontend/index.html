@@ -69,9 +69,12 @@
             <!-- Tab Content: Live Market -->
             <div id="tab-live" class="tab-content active">
                 <div class="glass-card fill-height">
-                    <div class="table-controls">
+                    <div class="table-controls" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                         <h3>Today's Share Prices</h3>
-                        <button id="refresh-live-btn" class="secondary-btn">Refresh Data</button>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <input type="text" id="live-search-input" placeholder="Search Symbol..." style="padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.1); color: white; min-width: 200px;">
+                            <button id="refresh-live-btn" class="secondary-btn">Refresh Data</button>
+                        </div>
                     </div>
                     <div class="table-container">
                         <table id="live-table">

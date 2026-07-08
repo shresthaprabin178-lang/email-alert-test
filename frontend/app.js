@@ -39,6 +39,7 @@ const historyTableBody = document.getElementById('history-table-body');
 const portfolioTableBody = document.getElementById('portfolio-table-body');
 const liveTableBody = document.getElementById('live-table-body');
 const refreshLiveBtn = document.getElementById('refresh-live-btn');
+const liveSearchInput = document.getElementById('live-search-input');
 
 // --- Auth Logic ---
 onAuthStateChanged(auth, (user) => {
@@ -136,7 +137,7 @@ function listenToTransactions() {
                 <td>Rs ${parseFloat(data.price).toFixed(2)}</td>
                 <td>${data.targetPrice ? `Rs ${parseFloat(data.targetPrice).toFixed(2)}` : '-'}</td>
                 <td>${data.stopLoss ? `Rs ${parseFloat(data.stopLoss).toFixed(2)}` : '-'}</td>
-                <td><button class="btn-small delete-btn" data-id="${doc.id}">Delete</button></td>
+                <td><button class="btn-small delete-btn" data-id="${data.id}">Delete</button></td>
             `;
             historyTableBody.appendChild(tr);
         });
@@ -362,3 +363,17 @@ function renderLiveTable() {
 }
 
 refreshLiveBtn.addEventListener('click', fetchLivePrices);
+
+liveSearchInput.addEventListener('input', (e) => {
+    const query = e.target.value.toLowerCase();
+    const rows = liveTableBody.querySelectorAll('tr');
+    rows.forEach(row => {
+        if (row.cells.length < 6) return; // Skip empty/loading row
+        const symbol = row.cells[0].textContent.toLowerCase();
+        if (symbol.includes(query)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+});
