@@ -44,13 +44,15 @@ const transporter = nodemailer.createTransport({
 });
 
 // --- Shared Scraper Function ---
+// Scrapes https://www.sharesansar.com/live-trading which renders the full table server-side.
+// Verified columns (S.No, Symbol, LTP, Point Change, % Change, Open, High, Low, Volume, Prev.Close)
 async function scrapeLivePrices() {
-    const url = 'https://www.sharesansar.com/today-share-price';
+    const url = 'https://www.sharesansar.com/live-trading';
     const response = await axios.get(url, {
         headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120'
         },
-        timeout: 15000
+        timeout: 20000
     });
 
     const html = response.data;
@@ -58,24 +60,29 @@ async function scrapeLivePrices() {
 
     const stocks = [];
 
-    $('table.table-bordered tbody tr').each((index, element) => {
+    // Table id="headFixed": col[0]=SNo, col[1]=Symbol, col[2]=LTP, col[3]=PointChange,
+    //                        col[4]=PercentChange, col[5]=Open, col[6]=High, col[7]=Low,
+    //                        col[8]=Volume, col[9]=PrevClose
+    $('table#headFixed tbody tr').each((index, element) => {
         const tds = $(element).find('td');
-        if (tds.length > 5) {
+        if (tds.length >= 8) {
             const symbol = $(tds[1]).text().trim();
-            const ltp = $(tds[7]).text().trim();
-            const diff = $(tds[15]).text().trim();
-            const percDiff = $(tds[17]).text().trim();
-            const high = $(tds[4]).text().trim();
-            const low = $(tds[5]).text().trim();
+            const ltp = $(tds[2]).text().trim();
+            const diff = $(tds[3]).text().trim();
+            const percDiff = $(tds[4]).text().trim();
+            const high = $(tds[6]).text().trim();
+            const low = $(tds[7]).text().trim();
+            const prevClose = $(tds[9]).text().trim();
 
-            if (symbol) {
+            if (symbol && symbol !== 'Symbol') {
                 stocks.push({
                     symbol,
                     ltp: ltp || '0',
                     diff: diff || '0',
                     percDiff: percDiff || '0',
                     high: high || '0',
-                    low: low || '0'
+                    low: low || '0',
+                    prevClose: prevClose || '0'
                 });
             }
         }
