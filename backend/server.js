@@ -62,9 +62,9 @@ async function scrapeLivePrices() {
         const tds = $(element).find('td');
         if (tds.length > 5) {
             const symbol = $(tds[1]).text().trim();
-            const ltp = $(tds[6]).text().trim();
-            const diff = $(tds[8]).text().trim();
-            const percDiff = $(tds[7]).text().trim();
+            const ltp = $(tds[7]).text().trim();
+            const diff = $(tds[15]).text().trim();
+            const percDiff = $(tds[17]).text().trim();
             const high = $(tds[4]).text().trim();
             const low = $(tds[5]).text().trim();
 
