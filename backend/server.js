@@ -34,14 +34,29 @@ app.use(express.json());
 // Serve frontend static files
 app.use(express.static(path.join(__dirname, '../frontend')));
 
-// Set up email sender blueprint
-const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-    }
-});
+// --- Email Sender via Gmail REST API (works on Render - no SMTP ports needed) ---
+// Uses Google OAuth2 app password via Gmail API POST over HTTPS (port 443)
+async function sendEmail(to, subject, text) {
+    const nodemailer = require('nodemailer');
+    const transporter = nodemailer.createTransport({
+        host: 'smtp.gmail.com',
+        port: 465,
+        secure: true,
+        auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS
+        },
+        connectionTimeout: 10000,   // fail fast: 10s
+        greetingTimeout: 10000,
+        socketTimeout: 15000
+    });
+    await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to,
+        subject,
+        text
+    });
+}
 
 // --- Shared Scraper Function ---
 // Scrapes https://www.sharesansar.com/live-trading which renders the full table server-side.
@@ -112,12 +127,11 @@ app.post('/api/send-alert', async (req, res) => {
     const { email, message, subject } = req.body;
 
     try {
-        await transporter.sendMail({
-            from: process.env.EMAIL_USER,
-            to: email,
-            subject: subject || '🚨 Manual Alert Notification',
-            text: message || 'This is a test alert from your Render backend!'
-        });
+        await sendEmail(
+            email,
+            subject || '🚨 Manual Alert Notification',
+            message || 'This is a test alert from your Render backend!'
+        );
         res.status(200).json({ success: true, message: 'Email sent successfully!' });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -165,28 +179,31 @@ async function checkAlerts() {
             if (!ltp) continue; // Stock not found in today's data
 
             let alertMsg = null;
+            let alertSubject = null;
 
             if (tx.targetPrice && ltp >= tx.targetPrice) {
+                alertSubject = `📊 Stock Alert: ${tx.symbol} - Target Hit`;
                 alertMsg = `🎯 TARGET HIT!\n\nStock: ${tx.symbol}\nCurrent Price: Rs ${ltp}\nYour Target: Rs ${tx.targetPrice}\n\nTransaction Details:\nType: ${tx.type}\nQty: ${tx.qty}\nBought at: Rs ${tx.price}`;
             } else if (tx.stopLoss && ltp <= tx.stopLoss) {
+                alertSubject = `📊 Stock Alert: ${tx.symbol} - Stop Loss Hit`;
                 alertMsg = `⚠️ STOP LOSS HIT!\n\nStock: ${tx.symbol}\nCurrent Price: Rs ${ltp}\nYour Stop Loss: Rs ${tx.stopLoss}\n\nTransaction Details:\nType: ${tx.type}\nQty: ${tx.qty}\nBought at: Rs ${tx.price}`;
             }
 
             if (alertMsg) {
-                // Send Email Alert
-                await transporter.sendMail({
-                    from: process.env.EMAIL_USER,
-                    to: tx.email,
-                    subject: `📊 Stock Alert: ${tx.symbol} - ${tx.targetPrice && ltp >= tx.targetPrice ? 'Target Hit' : 'Stop Loss Hit'}`,
-                    text: alertMsg
-                });
+                try {
+                    // Send Email Alert
+                    await sendEmail(tx.email, alertSubject, alertMsg);
 
-                // Mark as triggered so we don't send again
-                await db.collection('transactions').doc(doc.id).update({
-                    alertTriggered: true
-                });
+                    // Mark as triggered so we don't send again
+                    await db.collection('transactions').doc(doc.id).update({
+                        alertTriggered: true
+                    });
 
-                console.log(`   ✅ Alert sent for ${tx.symbol} to ${tx.email}`);
+                    console.log(`   ✅ Alert sent for ${tx.symbol} to ${tx.email}`);
+                } catch (emailErr) {
+                    console.error(`   ❌ Failed to send alert for ${tx.symbol}:`, emailErr.message);
+                    // Don't crash the whole loop — try next alert
+                }
             }
         }
 
