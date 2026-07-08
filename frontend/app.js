@@ -40,6 +40,16 @@ const portfolioTableBody = document.getElementById('portfolio-table-body');
 const liveTableBody = document.getElementById('live-table-body');
 const refreshLiveBtn = document.getElementById('refresh-live-btn');
 const liveSearchInput = document.getElementById('live-search-input');
+const txTypeSelect = document.getElementById('tx-type');
+const holdingPeriodGroup = document.getElementById('holding-period-group');
+
+txTypeSelect.addEventListener('change', (e) => {
+    if (e.target.value === 'SELL') {
+        holdingPeriodGroup.style.display = 'block';
+    } else {
+        holdingPeriodGroup.style.display = 'none';
+    }
+});
 
 // --- Auth Logic ---
 onAuthStateChanged(auth, (user) => {
@@ -134,7 +144,7 @@ function listenToTransactions() {
                 <td><strong>${data.symbol}</strong></td>
                 <td class="${data.type === 'BUY' ? 'positive' : 'negative'}">${data.type}</td>
                 <td>${data.qty}</td>
-                <td>Rs ${parseFloat(data.price).toFixed(2)}</td>
+                <td>Rs ${parseFloat(data.price).toFixed(2)}<br><small style="color: #aaa;">${data.type === 'BUY' ? 'WACC: Rs ' + (data.wacc || data.price).toFixed(2) : 'Net: Rs ' + (data.netReceivable || (data.qty * data.price)).toFixed(2)}</small></td>
                 <td>${data.targetPrice ? `Rs ${parseFloat(data.targetPrice).toFixed(2)}` : '-'}</td>
                 <td>${data.stopLoss ? `Rs ${parseFloat(data.stopLoss).toFixed(2)}` : '-'}</td>
                 <td><button class="btn-small delete-btn" data-id="${data.id}">Delete</button></td>
@@ -156,6 +166,50 @@ function listenToTransactions() {
     });
 }
 
+// --- NEPSE Tax & Fee Calculator ---
+function calculateNepseFees(type, qty, price, wacc = 0, isLongTerm = false) {
+    const amount = qty * price;
+    
+    // Broker Commission
+    let brokerComm = 0;
+    if (amount <= 50000) brokerComm = amount * 0.0040;
+    else if (amount <= 500000) brokerComm = amount * 0.0037;
+    else if (amount <= 2000000) brokerComm = amount * 0.0034;
+    else if (amount <= 10000000) brokerComm = amount * 0.0030;
+    else brokerComm = amount * 0.0027;
+
+    const sebonFee = amount * 0.00015;
+    const dpFee = 25;
+
+    let totalCostOrNet = 0;
+    let cgt = 0;
+
+    if (type === 'BUY') {
+        totalCostOrNet = amount + brokerComm + sebonFee + dpFee;
+    } else if (type === 'SELL') {
+        const totalFees = brokerComm + sebonFee + dpFee;
+        const grossReceivable = amount - totalFees;
+        
+        // Capital Gains Tax (CGT)
+        const totalWaccCost = qty * wacc;
+        const profit = grossReceivable - totalWaccCost;
+        
+        if (profit > 0) {
+            cgt = profit * (isLongTerm ? 0.05 : 0.075);
+        }
+        
+        totalCostOrNet = grossReceivable - cgt;
+    }
+
+    return {
+        brokerComm,
+        sebonFee,
+        dpFee,
+        cgt,
+        totalAmount: totalCostOrNet
+    };
+}
+
 txForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!currentUser) return;
@@ -164,17 +218,43 @@ txForm.addEventListener('submit', async (e) => {
     submitBtn.disabled = true;
     submitBtn.textContent = 'Saving...';
 
+    const type = document.getElementById('tx-type').value;
+    const qty = parseInt(document.getElementById('tx-qty').value);
+    const price = parseFloat(document.getElementById('tx-price').value);
+    const symbol = document.getElementById('tx-symbol').value.toUpperCase();
+
+    let calculatedWacc = price;
+    let netReceivable = 0;
+    let cgtPaid = 0;
+
+    if (type === 'BUY') {
+        const fees = calculateNepseFees('BUY', qty, price);
+        calculatedWacc = fees.totalAmount / qty;
+    } else {
+        const holdings = computeHoldings();
+        const currentWacc = holdings[symbol] ? holdings[symbol].wacc : price;
+        const isLongTerm = document.querySelector('input[name="holding-period"]:checked').value === 'long';
+        
+        const fees = calculateNepseFees('SELL', qty, price, currentWacc, isLongTerm);
+        netReceivable = fees.totalAmount;
+        cgtPaid = fees.cgt;
+        calculatedWacc = currentWacc;
+    }
+
     const txData = {
         uid: currentUser.uid,
         email: currentUser.email,
-        symbol: document.getElementById('tx-symbol').value.toUpperCase(),
-        type: document.getElementById('tx-type').value,
-        qty: parseInt(document.getElementById('tx-qty').value),
-        price: parseFloat(document.getElementById('tx-price').value),
+        symbol: symbol,
+        type: type,
+        qty: qty,
+        price: price,
         targetPrice: parseFloat(document.getElementById('tx-target').value) || null,
         stopLoss: parseFloat(document.getElementById('tx-stoploss').value) || null,
         createdAt: new Date(),
-        alertTriggered: false // Flag for background worker
+        alertTriggered: false,
+        wacc: calculatedWacc,
+        netReceivable: netReceivable,
+        cgtPaid: cgtPaid
     };
 
     try {
@@ -193,33 +273,38 @@ txForm.addEventListener('submit', async (e) => {
 });
 
 // --- Portfolio Computation ---
-function updatePortfolio() {
-    portfolioTableBody.innerHTML = '';
-
-    // Group transactions by symbol
+function computeHoldings() {
     const holdings = {};
-    let totalInvested = 0;
 
     transactionsData.forEach(tx => {
         if (!holdings[tx.symbol]) {
-            holdings[tx.symbol] = { qty: 0, invested: 0, targetPrice: null, stopLoss: null };
+            holdings[tx.symbol] = { qty: 0, invested: 0, wacc: 0, targetPrice: null, stopLoss: null };
         }
 
         if (tx.type === 'BUY') {
+            const currentTotalValue = holdings[tx.symbol].qty * holdings[tx.symbol].wacc;
+            const newTxValue = tx.qty * (tx.wacc || tx.price);
+            
             holdings[tx.symbol].qty += tx.qty;
-            holdings[tx.symbol].invested += (tx.qty * tx.price);
+            holdings[tx.symbol].wacc = (currentTotalValue + newTxValue) / holdings[tx.symbol].qty;
+            holdings[tx.symbol].invested = holdings[tx.symbol].qty * holdings[tx.symbol].wacc;
         } else if (tx.type === 'SELL') {
-            // Simplistic FIFO/Average approximation for portfolio reduction
             holdings[tx.symbol].qty -= tx.qty;
-            // Reduce invested amount proportionally
-            const avgBuyPrice = holdings[tx.symbol].invested / (holdings[tx.symbol].qty + tx.qty);
-            holdings[tx.symbol].invested -= (tx.qty * avgBuyPrice);
+            holdings[tx.symbol].invested = holdings[tx.symbol].qty * holdings[tx.symbol].wacc; // WACC remains same on SELL
         }
 
-        // Grab the most recently set target/sl for this symbol
         if (tx.targetPrice && !holdings[tx.symbol].targetPrice) holdings[tx.symbol].targetPrice = tx.targetPrice;
         if (tx.stopLoss && !holdings[tx.symbol].stopLoss) holdings[tx.symbol].stopLoss = tx.stopLoss;
     });
+
+    return holdings;
+}
+
+function updatePortfolio() {
+    portfolioTableBody.innerHTML = '';
+
+    const holdings = computeHoldings();
+    let totalInvested = 0;
 
     let currentTotalValue = 0;
     totalInvested = 0;
@@ -237,11 +322,11 @@ function updatePortfolio() {
 
     holdingKeys.forEach(symbol => {
         const h = holdings[symbol];
-        const avgPrice = h.invested / h.qty;
+        const wacc = h.wacc || 0;
         totalInvested += h.invested;
 
         // Find live price if available
-        let ltp = avgPrice; // Fallback
+        let ltp = wacc; // Fallback
         const liveStock = liveMarketData.find(s => s.symbol === symbol);
         if (liveStock) {
             ltp = parseFloat(liveStock.ltp.replace(/,/g, ''));
@@ -257,7 +342,7 @@ function updatePortfolio() {
         tr.innerHTML = `
             <td><strong>${symbol}</strong></td>
             <td>${h.qty}</td>
-            <td>Rs ${avgPrice.toFixed(2)}</td>
+            <td>Rs ${wacc.toFixed(2)}</td>
             <td>Rs ${ltp.toFixed(2)}</td>
             <td>Rs ${currentValue.toFixed(2)}</td>
             <td class="${plClass}">${pl > 0 ? '+' : ''}Rs ${pl.toFixed(2)}</td>

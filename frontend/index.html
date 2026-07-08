@@ -121,7 +121,7 @@
                                 <tr>
                                     <th>Symbol</th>
                                     <th>Qty</th>
-                                    <th>Avg Price</th>
+                                    <th>WACC</th>
                                     <th>LTP</th>
                                     <th>Current Value</th>
                                     <th>P&L</th>
@@ -169,7 +169,15 @@
                                 <input type="number" id="tx-price" step="0.01" required>
                             </div>
 
-                            <div class="alert-section">
+                            <div class="form-group" id="holding-period-group" style="display: none; margin-top: 10px;">
+                                <label>Holding Period (For CGT Calculation)</label>
+                                <div style="display: flex; gap: 15px; margin-top: 5px;">
+                                    <label style="font-weight: normal;"><input type="radio" name="holding-period" value="short" checked> Short-Term (< 365 Days, 7.5%)</label>
+                                    <label style="font-weight: normal;"><input type="radio" name="holding-period" value="long"> Long-Term (> 365 Days, 5.0%)</label>
+                                </div>
+                            </div>
+
+                            <div class="alert-section" style="margin-top: 15px;">
                                 <h4>Alert Triggers (Optional)</h4>
                                 <p class="text-sm">Set these to receive background email alerts.</p>
                                 
