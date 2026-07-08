@@ -170,13 +170,13 @@ function listenToTransactions() {
 function calculateNepseFees(type, qty, price, wacc = 0, isLongTerm = false) {
     const amount = qty * price;
     
-    // Broker Commission
+    // Broker Commission (Updated 2081/2024 rates)
     let brokerComm = 0;
-    if (amount <= 50000) brokerComm = amount * 0.0040;
-    else if (amount <= 500000) brokerComm = amount * 0.0037;
-    else if (amount <= 2000000) brokerComm = amount * 0.0034;
-    else if (amount <= 10000000) brokerComm = amount * 0.0030;
-    else brokerComm = amount * 0.0027;
+    if (amount <= 50000) brokerComm = Math.max(10, amount * 0.0036);
+    else if (amount <= 500000) brokerComm = amount * 0.0033;
+    else if (amount <= 2000000) brokerComm = amount * 0.0031;
+    else if (amount <= 10000000) brokerComm = amount * 0.0027;
+    else brokerComm = amount * 0.0024;
 
     const sebonFee = amount * 0.00015;
     const dpFee = 25;
@@ -260,6 +260,7 @@ txForm.addEventListener('submit', async (e) => {
     try {
         await addDoc(collection(db, "transactions"), txData);
         txForm.reset();
+        document.getElementById('live-calc-box').style.display = 'none';
         alert("Transaction added successfully!");
         // Switch to portfolio tab to see updates
         navLinks[1].click();
@@ -271,6 +272,80 @@ txForm.addEventListener('submit', async (e) => {
         submitBtn.textContent = 'Save Transaction';
     }
 });
+
+// --- Live Calculation Update ---
+function updateLiveCalc() {
+    const type = document.getElementById('tx-type').value;
+    const qtyStr = document.getElementById('tx-qty').value;
+    const priceStr = document.getElementById('tx-price').value;
+    const symbol = document.getElementById('tx-symbol').value.toUpperCase();
+    
+    const liveCalcBox = document.getElementById('live-calc-box');
+    
+    if (!qtyStr || !priceStr) {
+        liveCalcBox.style.display = 'none';
+        return;
+    }
+    
+    const qty = parseInt(qtyStr);
+    const price = parseFloat(priceStr);
+    
+    if (isNaN(qty) || isNaN(price) || qty <= 0 || price <= 0) {
+        liveCalcBox.style.display = 'none';
+        return;
+    }
+
+    liveCalcBox.style.display = 'block';
+
+    let currentWacc = price;
+    if (type === 'SELL') {
+        const holdings = computeHoldings();
+        if (holdings[symbol] && holdings[symbol].wacc) {
+            currentWacc = holdings[symbol].wacc;
+        }
+    }
+    
+    const holdingRadio = document.querySelector('input[name="holding-period"]:checked');
+    const isLongTerm = holdingRadio ? holdingRadio.value === 'long' : false;
+    
+    const fees = calculateNepseFees(type, qty, price, currentWacc, isLongTerm);
+
+    document.getElementById('calc-broker').textContent = fees.brokerComm.toFixed(2);
+    document.getElementById('calc-sebon-dp').textContent = (fees.sebonFee + fees.dpFee).toFixed(2);
+
+    const calcCgtRow = document.getElementById('calc-cgt-row');
+    const calcCgt = document.getElementById('calc-cgt');
+    const calcTotalLabel = document.getElementById('calc-total-label');
+    const calcTotal = document.getElementById('calc-total');
+    const calcWaccLabel = document.getElementById('calc-wacc-label');
+    const calcWacc = document.getElementById('calc-wacc');
+
+    if (type === 'BUY') {
+        calcCgtRow.style.display = 'none';
+        calcTotalLabel.textContent = 'Total Cost:';
+        calcTotal.textContent = fees.totalAmount.toFixed(2);
+        calcTotal.style.color = '#4CAF50';
+        calcWaccLabel.textContent = 'WACC per share:';
+        calcWacc.textContent = (fees.totalAmount / qty).toFixed(2);
+        calcWacc.style.color = '#2196F3';
+    } else {
+        calcCgtRow.style.display = 'flex';
+        calcCgt.textContent = fees.cgt.toFixed(2);
+        calcTotalLabel.textContent = 'Net Receivable:';
+        calcTotal.textContent = fees.totalAmount.toFixed(2);
+        calcTotal.style.color = '#F44336';
+        calcWaccLabel.textContent = 'Profit/Loss:';
+        const pl = fees.totalAmount - (qty * currentWacc);
+        calcWacc.textContent = (pl >= 0 ? '+' : '') + pl.toFixed(2);
+        calcWacc.style.color = pl >= 0 ? '#4CAF50' : '#F44336';
+    }
+}
+
+document.getElementById('tx-type').addEventListener('change', updateLiveCalc);
+document.getElementById('tx-qty').addEventListener('input', updateLiveCalc);
+document.getElementById('tx-price').addEventListener('input', updateLiveCalc);
+document.getElementById('tx-symbol').addEventListener('input', updateLiveCalc);
+document.querySelectorAll('input[name="holding-period"]').forEach(r => r.addEventListener('change', updateLiveCalc));
 
 // --- Portfolio Computation ---
 function computeHoldings() {

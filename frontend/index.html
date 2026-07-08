@@ -169,6 +169,24 @@
                                 <input type="number" id="tx-price" step="0.01" required>
                             </div>
 
+                            <div id="live-calc-box" style="display: none; background: rgba(255, 255, 255, 0.05); border-radius: 5px; padding: 10px; margin-top: 10px; font-size: 0.9em; border: 1px solid rgba(255, 255, 255, 0.1);">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                    <span>Broker Commission:</span> <strong id="calc-broker">0.00</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                    <span>SEBON & DP Fee:</span> <strong id="calc-sebon-dp">0.00</strong>
+                                </div>
+                                <div id="calc-cgt-row" style="display: none; justify-content: space-between; margin-bottom: 5px;">
+                                    <span>CGT:</span> <strong id="calc-cgt" class="negative">0.00</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
+                                    <span id="calc-total-label">Total Cost:</span> <strong id="calc-total" style="color: #4CAF50;">0.00</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; margin-top: 5px;">
+                                    <span id="calc-wacc-label">WACC per share:</span> <strong id="calc-wacc" style="color: #2196F3;">0.00</strong>
+                                </div>
+                            </div>
+
                             <div class="form-group" id="holding-period-group" style="display: none; margin-top: 10px;">
                                 <label>Holding Period (For CGT Calculation)</label>
                                 <div style="display: flex; gap: 15px; margin-top: 5px;">
