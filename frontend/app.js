@@ -23,6 +23,11 @@ let hlMarketData = []; // 52 week data
 let transactionsData = [];
 let watchlistData = [];
 let currentCash = 0;
+let totalDeposited = 0;
+
+const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') 
+    ? 'http://localhost:5000' 
+    : 'https://email-alert-backend-z097.onrender.com';
 
 // DOM Elements - General
 const loginScreen = document.getElementById('login-screen');
@@ -134,21 +139,44 @@ async function initUserData() {
     const docSnap = await getDoc(userRef);
     
     if (docSnap.exists()) {
-        currentCash = docSnap.data().cashBalance || 0;
+        const data = docSnap.data();
+        currentCash = data.cashBalance || 0;
+        totalDeposited = data.totalDeposited || 0;
     } else {
-        await setDoc(userRef, { email: currentUser.email, cashBalance: 0 });
+        await setDoc(userRef, { email: currentUser.email, cashBalance: 0, totalDeposited: 0 });
         currentCash = 0;
+        totalDeposited = 0;
     }
     updateCashDisplay();
 }
 
-async function updateCashBalance(amount, isAddition) {
-    const newBalance = isAddition ? currentCash + amount : currentCash - amount;
-    if (newBalance < 0) return false;
+async function updateCashBalance(amount, actionType) {
+    let newBalance = currentCash;
+    let newTotalDeposited = totalDeposited;
+
+    if (actionType === 'deposit') {
+        newBalance += amount;
+        newTotalDeposited += amount;
+    } else if (actionType === 'withdraw') {
+        if (amount > newBalance) return false;
+        newBalance -= amount;
+        newTotalDeposited -= amount; // Withdrawing reduces your principal investment base
+    } else if (actionType === 'buy') {
+        if (amount > newBalance) return false;
+        newBalance -= amount;
+    } else if (actionType === 'sell') {
+        newBalance += amount;
+    }
+
+    await updateDoc(doc(db, "users", currentUser.uid), { 
+        cashBalance: newBalance,
+        totalDeposited: newTotalDeposited
+    });
     
-    await updateDoc(doc(db, "users", currentUser.uid), { cashBalance: newBalance });
     currentCash = newBalance;
+    totalDeposited = newTotalDeposited;
     updateCashDisplay();
+    updatePortfolio(); // Re-trigger portfolio update since P&L depends on these
     return true;
 }
 
@@ -174,15 +202,17 @@ document.getElementById('withdraw-cash-btn').addEventListener('click', () => {
 
 cashForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const type = document.getElementById('cash-action-type').value;
+    const type = document.getElementById('cash-action-type').value; // 'add' or 'withdraw'
     const amount = parseFloat(document.getElementById('cash-amount').value);
     
-    if (type === 'withdraw' && amount > currentCash) {
+    const actionType = type === 'add' ? 'deposit' : 'withdraw';
+    
+    if (actionType === 'withdraw' && amount > currentCash) {
         alert("Insufficient funds to withdraw.");
         return;
     }
     
-    await updateCashBalance(amount, type === 'add');
+    await updateCashBalance(amount, actionType);
     cashModal.classList.remove('active');
     cashForm.reset();
 });
@@ -280,7 +310,12 @@ function listenToTransactions() {
             btn.addEventListener('click', async (e) => {
                 const id = e.currentTarget.getAttribute('data-id');
                 if (confirm("Delete this transaction? Warning: Cash balance won't be automatically refunded for deletions.")) {
-                    await deleteDoc(doc(db, "transactions", id));
+                    try {
+                        await deleteDoc(doc(db, "transactions", id));
+                        // The onSnapshot will automatically re-run and call updatePortfolio()
+                    } catch(err) {
+                        alert("Error deleting transaction");
+                    }
                 }
             });
         });
@@ -397,8 +432,8 @@ txForm.addEventListener('submit', async (e) => {
     try {
         await addDoc(collection(db, "transactions"), txData);
         // Update Cash
-        if (type === 'BUY') await updateCashBalance(fees.totalAmount, false);
-        if (type === 'SELL') await updateCashBalance(fees.totalAmount, true);
+        if (type === 'BUY') await updateCashBalance(fees.totalAmount, 'buy');
+        if (type === 'SELL') await updateCashBalance(fees.totalAmount, 'sell');
 
         txForm.reset();
         document.getElementById('live-calc-box').style.display = 'none';
@@ -491,8 +526,15 @@ function updatePortfolio() {
     document.getElementById('portfolio-total-invested').textContent = `Rs ${totalInvested.toFixed(2)}`;
     document.getElementById('portfolio-total-value').textContent = `Rs ${currentTotalValue.toFixed(2)}`;
 
-    const totalPl = totalNetValue - totalInvested;
-    const totalPlPerc = (totalPl / totalInvested) * 100;
+    // Feature 1: Overall P&L based on Initial Investment (Total Deposited)
+    // Formula: (Available Cash + Current Value of Holdings) - Total Cash Deposited
+    const totalAssetValue = currentTotalValue + currentCash;
+    const totalPl = totalAssetValue - totalDeposited;
+    
+    let totalPlPerc = 0;
+    if (totalDeposited > 0) {
+        totalPlPerc = (totalPl / totalDeposited) * 100;
+    }
     
     const plEl = document.getElementById('portfolio-pl');
     const plPercEl = document.getElementById('portfolio-pl-perc');
@@ -537,7 +579,7 @@ sellForm.addEventListener('submit', async (e) => {
 
     try {
         await addDoc(collection(db, "transactions"), txData);
-        await updateCashBalance(fees.totalAmount, true);
+        await updateCashBalance(fees.totalAmount, 'sell');
         sellModal.classList.remove('active');
         sellForm.reset();
     } catch (err) { alert("Sell failed"); }
@@ -659,8 +701,7 @@ async function fetchLivePrices() {
     sysStatus.textContent = 'Fetching data...';
 
     try {
-        // const response = await fetch('http://localhost:5000/api/live-prices');
-        const response = await fetch('https://email-alert-backend-z097.onrender.com/api/live-prices');
+        const response = await fetch(`${API_BASE}/api/live-prices`);
         if (!response.ok) throw new Error("Backend error");
 
         const data = await response.json();
@@ -712,15 +753,13 @@ document.getElementById('live-search-input').addEventListener('input', (e) => {
 async function fetch52WeekData() {
     hlTableBody.innerHTML = '<tr><td colspan="7" class="text-center">Fetching 52-Week Data...</td></tr>';
     try {
-        // We rely on backend scraping for this
-        // const response = await fetch('http://localhost:5000/api/52week-prices');
-        const response = await fetch('https://email-alert-backend-z097.onrender.com/api/52week-prices');
+        const response = await fetch(`${API_BASE}/api/52week-prices`);
         if (!response.ok) throw new Error();
         const data = await response.json();
         hlMarketData = data.data || [];
         applyHlFilter();
     } catch (e) {
-        hlTableBody.innerHTML = '<tr><td colspan="7" class="text-center negative">Failed to fetch data. Ensure backend supports /api/52week-prices</td></tr>';
+        hlTableBody.innerHTML = '<tr><td colspan="7" class="text-center negative">Failed to fetch data. Ensure backend is running.</td></tr>';
     }
 }
 
