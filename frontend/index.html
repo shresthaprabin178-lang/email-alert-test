@@ -3,18 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stock alerts & Portfolio</title>
+    <title>Stock Alerts & Portfolio</title>
     <!-- Google Fonts for modern typography -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Phosphor Icons for modern sleek icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <link rel="stylesheet" href="index.css">
 </head>
-<body>
+<body class="theme-dark">
     <!-- Login Screen -->
     <div id="login-screen" class="screen active">
         <div class="glass-card login-card">
             <div class="glow"></div>
             <h1>Stock Alerts</h1>
-            <p>Sign in to manage your portfolio and alerts</p>
+            <p>Sign in to manage your portfolio, track alerts, and stay ahead of the market.</p>
             <button id="google-login-btn" class="primary-btn">
                 <svg viewBox="0 0 24 24" width="20" height="20" xmlns="http://www.w3.org/2000/svg">
                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -29,32 +31,56 @@
 
     <!-- Dashboard Screen -->
     <div id="dashboard-screen" class="screen">
-        <nav class="sidebar glass-panel">
+        <!-- Mobile Header -->
+        <div class="mobile-header">
             <div class="brand">
+                <div class="logo-glow"></div>
+                <h2>StockAlerts</h2>
+            </div>
+            <button id="mobile-menu-btn"><i class="ph ph-list"></i></button>
+        </div>
+
+        <!-- Sidebar -->
+        <nav class="sidebar glass-panel" id="sidebar">
+            <div class="brand hide-on-mobile">
                 <div class="logo-glow"></div>
                 <h2>StockAlerts</h2>
             </div>
             
             <ul class="nav-links">
                 <li class="active" data-tab="live">
-                    <span class="icon">📈</span> Live Market
+                    <i class="ph ph-trend-up"></i> Live Market
                 </li>
                 <li data-tab="portfolio">
-                    <span class="icon">💼</span> Portfolio
+                    <i class="ph ph-briefcase"></i> Portfolio
                 </li>
                 <li data-tab="transactions">
-                    <span class="icon">⚡</span> Transactions
+                    <i class="ph ph-arrows-left-right"></i> Transactions
+                </li>
+                <li data-tab="watchlist">
+                    <i class="ph ph-eye"></i> Watchlist
+                </li>
+                <li data-tab="52week">
+                    <i class="ph ph-chart-line-up"></i> 52-Week H/L
                 </li>
             </ul>
 
-            <div class="user-profile">
-                <img id="user-avatar" src="" alt="User">
-                <div class="user-info">
-                    <span id="user-name">User</span>
-                    <button id="logout-btn" class="text-btn">Sign Out</button>
+            <div class="sidebar-bottom">
+                <button id="theme-toggle-btn" class="secondary-btn w-100 mb-1">
+                    <i class="ph ph-sun"></i> <span>Light Mode</span>
+                </button>
+                <div class="user-profile">
+                    <img id="user-avatar" src="" alt="User">
+                    <div class="user-info">
+                        <span id="user-name">User</span>
+                        <button id="logout-btn" class="text-btn">Sign Out</button>
+                    </div>
                 </div>
             </div>
         </nav>
+
+        <!-- Overlay for mobile sidebar -->
+        <div id="sidebar-overlay" class="sidebar-overlay"></div>
 
         <main class="content-area">
             <!-- Top Bar -->
@@ -69,11 +95,14 @@
             <!-- Tab Content: Live Market -->
             <div id="tab-live" class="tab-content active">
                 <div class="glass-card fill-height">
-                    <div class="table-controls" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <div class="table-controls">
                         <h3>Today's Share Prices</h3>
-                        <div style="display: flex; gap: 10px; align-items: center;">
-                            <input type="text" id="live-search-input" placeholder="Search Symbol..." style="padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.1); color: white; min-width: 200px;">
-                            <button id="refresh-live-btn" class="secondary-btn">Refresh Data</button>
+                        <div class="controls-right">
+                            <div class="search-box">
+                                <i class="ph ph-magnifying-glass"></i>
+                                <input type="text" id="live-search-input" placeholder="Search Symbol...">
+                            </div>
+                            <button id="refresh-live-btn" class="secondary-btn"><i class="ph ph-arrows-clockwise"></i> Refresh</button>
                         </div>
                     </div>
                     <div class="table-container">
@@ -100,16 +129,27 @@
             <div id="tab-portfolio" class="tab-content">
                 <div class="metrics-grid">
                     <div class="metric-card glass-card">
-                        <span class="label">Total Value</span>
+                        <div class="metric-header">
+                            <span class="label">Available Cash</span>
+                            <div class="metric-actions">
+                                <button class="btn-icon" id="add-cash-btn" title="Add Cash"><i class="ph ph-plus-circle"></i></button>
+                                <button class="btn-icon" id="withdraw-cash-btn" title="Withdraw Cash"><i class="ph ph-minus-circle"></i></button>
+                            </div>
+                        </div>
+                        <h3 id="portfolio-cash">Rs 0.00</h3>
+                    </div>
+                    <div class="metric-card glass-card">
+                        <span class="label">Current Value</span>
                         <h3 id="portfolio-total-value">Rs 0.00</h3>
                     </div>
                     <div class="metric-card glass-card">
-                        <span class="label">Total Investment</span>
+                        <span class="label">Current Investment</span>
                         <h3 id="portfolio-total-invested">Rs 0.00</h3>
                     </div>
-                    <div class="metric-card glass-card">
-                        <span class="label">Overall P&L</span>
+                    <div class="metric-card glass-card highlight">
+                        <span class="label">Overall P&L (Tax Adjusted)</span>
                         <h3 id="portfolio-pl" class="positive">+ Rs 0.00</h3>
+                        <span id="portfolio-pl-perc" class="badge positive">0.00%</span>
                     </div>
                 </div>
 
@@ -124,14 +164,13 @@
                                     <th>WACC</th>
                                     <th>LTP</th>
                                     <th>Current Value</th>
-                                    <th>P&L</th>
-                                    <th>Target</th>
-                                    <th>Stop Loss</th>
+                                    <th>P&L (Net)</th>
+                                    <th>P&L %</th>
                                     <th>Action</th>
                                 </tr>
                             </thead>
                             <tbody id="portfolio-table-body">
-                                <tr><td colspan="9" class="text-center">No holdings yet.</td></tr>
+                                <tr><td colspan="8" class="text-center">No holdings yet.</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -143,7 +182,7 @@
                 <div class="grid-2-col">
                     <!-- Add Transaction Form -->
                     <div class="glass-card">
-                        <h3>Add Transaction / Alert</h3>
+                        <h3>Add Transaction</h3>
                         <form id="transaction-form">
                             <div class="form-group">
                                 <label>Symbol (e.g., NABIL)</label>
@@ -156,6 +195,7 @@
                                     <select id="tx-type" required>
                                         <option value="BUY">BUY</option>
                                         <option value="SELL">SELL</option>
+                                        <option value="BONUS">BONUS</option>
                                     </select>
                                 </div>
                                 <div class="form-group">
@@ -169,45 +209,20 @@
                                 <input type="number" id="tx-price" step="0.01" required>
                             </div>
 
-                            <div id="live-calc-box" style="display: none; background: rgba(255, 255, 255, 0.05); border-radius: 5px; padding: 10px; margin-top: 10px; font-size: 0.9em; border: 1px solid rgba(255, 255, 255, 0.1);">
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                                    <span>Broker Commission:</span> <strong id="calc-broker">0.00</strong>
-                                </div>
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                                    <span>SEBON & DP Fee:</span> <strong id="calc-sebon-dp">0.00</strong>
-                                </div>
-                                <div id="calc-cgt-row" style="display: none; justify-content: space-between; margin-bottom: 5px;">
-                                    <span>CGT:</span> <strong id="calc-cgt" class="negative">0.00</strong>
-                                </div>
-                                <div style="display: flex; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
-                                    <span id="calc-total-label">Total Cost:</span> <strong id="calc-total" style="color: #4CAF50;">0.00</strong>
-                                </div>
-                                <div style="display: flex; justify-content: space-between; margin-top: 5px;">
-                                    <span id="calc-wacc-label">WACC per share:</span> <strong id="calc-wacc" style="color: #2196F3;">0.00</strong>
-                                </div>
+                            <div id="live-calc-box" class="calc-box" style="display: none;">
+                                <div class="calc-row"><span>Broker Comm:</span> <strong id="calc-broker">0.00</strong></div>
+                                <div class="calc-row"><span>SEBON & DP:</span> <strong id="calc-sebon-dp">0.00</strong></div>
+                                <div id="calc-cgt-row" class="calc-row" style="display: none;"><span>CGT:</span> <strong id="calc-cgt" class="negative">0.00</strong></div>
+                                <div class="calc-divider"></div>
+                                <div class="calc-row"><span id="calc-total-label">Total Cost:</span> <strong id="calc-total" class="positive">0.00</strong></div>
+                                <div class="calc-row mt-1"><span id="calc-wacc-label">WACC per share:</span> <strong id="calc-wacc" class="accent">0.00</strong></div>
                             </div>
 
-                            <div class="form-group" id="holding-period-group" style="display: none; margin-top: 10px;">
-                                <label>Holding Period (For CGT Calculation)</label>
-                                <div style="display: flex; gap: 15px; margin-top: 5px;">
-                                    <label style="font-weight: normal;"><input type="radio" name="holding-period" value="short" checked> Short-Term (< 365 Days, 7.5%)</label>
-                                    <label style="font-weight: normal;"><input type="radio" name="holding-period" value="long"> Long-Term (> 365 Days, 5.0%)</label>
-                                </div>
-                            </div>
-
-                            <div class="alert-section" style="margin-top: 15px;">
-                                <h4>Alert Triggers (Optional)</h4>
-                                <p class="text-sm">Set these to receive background email alerts.</p>
-                                
-                                <div class="form-row mt-1">
-                                    <div class="form-group">
-                                        <label>Target Price (Rs)</label>
-                                        <input type="number" id="tx-target" step="0.01" placeholder="Take Profit">
-                                    </div>
-                                    <div class="form-group">
-                                        <label>Stop Loss (Rs)</label>
-                                        <input type="number" id="tx-stoploss" step="0.01" placeholder="Cut Loss">
-                                    </div>
+                            <div class="form-group" id="holding-period-group" style="display: none; margin-top: 15px;">
+                                <label>Holding Period (For CGT)</label>
+                                <div class="radio-group">
+                                    <label class="radio-label"><input type="radio" name="holding-period" value="short" checked> Short (< 365 Days, 7.5%)</label>
+                                    <label class="radio-label"><input type="radio" name="holding-period" value="long"> Long (> 365 Days, 5.0%)</label>
                                 </div>
                             </div>
                             
@@ -217,7 +232,7 @@
 
                     <!-- Transaction History -->
                     <div class="glass-card">
-                        <h3>Recent Transactions & Alerts</h3>
+                        <h3>Recent Transactions</h3>
                         <div class="table-container history-table-container">
                             <table id="history-table">
                                 <thead>
@@ -226,21 +241,203 @@
                                         <th>Symbol</th>
                                         <th>Type</th>
                                         <th>Qty</th>
-                                        <th>Price</th>
-                                        <th>Target</th>
-                                        <th>SL</th>
+                                        <th>Price/WACC</th>
                                         <th>Action</th>
                                     </tr>
                                 </thead>
                                 <tbody id="history-table-body">
-                                    <tr><td colspan="8" class="text-center">No transactions found.</td></tr>
+                                    <tr><td colspan="6" class="text-center">No transactions found.</td></tr>
                                 </tbody>
                             </table>
                         </div>
                     </div>
                 </div>
             </div>
+
+            <!-- Tab Content: Watchlist -->
+            <div id="tab-watchlist" class="tab-content">
+                <div class="glass-card mb-2">
+                    <h3>Add to Watchlist</h3>
+                    <form id="watchlist-form" class="form-inline">
+                        <div class="form-group flex-1">
+                            <label>Symbol</label>
+                            <input type="text" id="wl-symbol" required autocomplete="off" placeholder="e.g. SHIVM">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Target Buy Price (Rs)</label>
+                            <input type="number" id="wl-target" step="0.01" required placeholder="Alert when LTP <= Target">
+                        </div>
+                        <button type="submit" class="primary-btn mt-auto">Add Alert</button>
+                    </form>
+                </div>
+
+                <div class="glass-card">
+                    <h3>Your Watchlist</h3>
+                    <div class="table-container">
+                        <table id="watchlist-table">
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>LTP</th>
+                                    <th>Target Buy</th>
+                                    <th>Status</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="watchlist-table-body">
+                                <tr><td colspan="5" class="text-center">Watchlist is empty.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Content: 52-Week H/L -->
+            <div id="tab-52week" class="tab-content">
+                <div class="glass-card fill-height">
+                    <div class="table-controls">
+                        <h3>52-Week High / Low Screener</h3>
+                        <div class="controls-right filters">
+                            <select id="hl-sector-filter" class="auto-width">
+                                <option value="ALL">All Sectors</option>
+                                <option value="Commercial Banks">Commercial Banks</option>
+                                <option value="Development Banks">Development Banks</option>
+                                <option value="Finance">Finance</option>
+                                <option value="Microfinance">Microfinance</option>
+                                <option value="Life Insurance">Life Insurance</option>
+                                <option value="Non Life Insurance">Non Life Insurance</option>
+                                <option value="Hydropower">Hydropower</option>
+                                <option value="Hotels And Tourism">Hotels And Tourism</option>
+                                <option value="Manufacturing And Processing">Manufacturing</option>
+                                <option value="Investment">Investment</option>
+                                <option value="Trading">Trading</option>
+                                <option value="Others">Others</option>
+                            </select>
+                            <div class="filter-group">
+                                <span>Filter:</span>
+                                <select id="hl-type-filter" class="auto-width">
+                                    <option value="LOW">Near 52W Low</option>
+                                    <option value="HIGH">Near 52W High</option>
+                                </select>
+                                <span>within</span>
+                                <input type="number" id="hl-perc-filter" value="5" min="1" max="100" style="width: 70px;">
+                                <span>%</span>
+                            </div>
+                            <button id="apply-hl-filter" class="primary-btn btn-small">Apply</button>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table id="hl-table">
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>Sector</th>
+                                    <th>LTP</th>
+                                    <th>52W High</th>
+                                    <th>52W Low</th>
+                                    <th>% From Low</th>
+                                    <th>% From High</th>
+                                </tr>
+                            </thead>
+                            <tbody id="hl-table-body">
+                                <tr><td colspan="7" class="text-center">Loading data...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </main>
+    </div>
+
+    <!-- Modals -->
+    <!-- Cash Modal -->
+    <div id="cash-modal" class="modal-overlay">
+        <div class="modal glass-card">
+            <h3 id="cash-modal-title">Manage Cash</h3>
+            <form id="cash-form">
+                <input type="hidden" id="cash-action-type">
+                <div class="form-group">
+                    <label>Amount (Rs)</label>
+                    <input type="number" id="cash-amount" step="0.01" min="1" required>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="secondary-btn close-modal">Cancel</button>
+                    <button type="submit" class="primary-btn">Confirm</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Sell Modal -->
+    <div id="sell-modal" class="modal-overlay">
+        <div class="modal glass-card">
+            <h3>Sell Stock</h3>
+            <form id="sell-form">
+                <div class="form-group">
+                    <label>Symbol</label>
+                    <input type="text" id="sell-symbol" readonly class="disabled-input">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Available Qty</label>
+                        <input type="number" id="sell-avail-qty" readonly class="disabled-input">
+                    </div>
+                    <div class="form-group">
+                        <label>Sell Qty</label>
+                        <input type="number" id="sell-qty" min="1" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Sell Price (Rs)</label>
+                    <input type="number" id="sell-price" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label>Holding Period</label>
+                    <div class="radio-group">
+                        <label class="radio-label"><input type="radio" name="sell-holding" value="short" checked> Short (< 365 Days, 7.5%)</label>
+                        <label class="radio-label"><input type="radio" name="sell-holding" value="long"> Long (> 365 Days, 5.0%)</label>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="secondary-btn close-modal">Cancel</button>
+                    <button type="submit" class="primary-btn warning-btn">Execute Sell</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Transaction Modal -->
+    <div id="edit-tx-modal" class="modal-overlay">
+        <div class="modal glass-card">
+            <h3>Edit Transaction</h3>
+            <form id="edit-tx-form">
+                <input type="hidden" id="edit-tx-id">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Date</label>
+                        <input type="date" id="edit-tx-date" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Symbol</label>
+                        <input type="text" id="edit-tx-symbol" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Qty</label>
+                        <input type="number" id="edit-tx-qty" min="1" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Price</label>
+                        <input type="number" id="edit-tx-price" step="0.01" required>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="secondary-btn close-modal">Cancel</button>
+                    <button type="submit" class="primary-btn">Update</button>
+                </div>
+            </form>
+        </div>
     </div>
 
     <script type="module" src="app.js"></script>
