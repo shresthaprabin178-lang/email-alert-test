@@ -182,6 +182,8 @@ async function updateCashBalance(amount, actionType) {
 
 function updateCashDisplay() {
     document.getElementById('portfolio-cash').textContent = `Rs ${currentCash.toFixed(2)}`;
+    const initEl = document.getElementById('portfolio-initial-invested');
+    if (initEl) initEl.textContent = `Rs ${totalDeposited.toFixed(2)}`;
 }
 
 // Cash Modals
@@ -525,9 +527,12 @@ function updatePortfolio() {
 
     document.getElementById('portfolio-total-invested').textContent = `Rs ${totalInvested.toFixed(2)}`;
     document.getElementById('portfolio-total-value').textContent = `Rs ${currentTotalValue.toFixed(2)}`;
+    
+    const initEl = document.getElementById('portfolio-initial-invested');
+    if (initEl) initEl.textContent = `Rs ${totalDeposited.toFixed(2)}`;
 
-    // Feature 1: Overall P&L based on Initial Investment (Total Deposited)
-    // Formula: (Available Cash + Current Value of Holdings) - Total Cash Deposited
+    // Feature 1 & 4: Overall P&L based on Initial Investment
+    // Formula: ((Available Cash + Current Value of Holdings) - Initial Investment) / Initial Investment
     const totalAssetValue = currentTotalValue + currentCash;
     const totalPl = totalAssetValue - totalDeposited;
     
