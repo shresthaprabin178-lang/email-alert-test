@@ -170,11 +170,13 @@
                                     <th>Current Value</th>
                                     <th>P&L (Net)</th>
                                     <th>P&L %</th>
+                                    <th>Target</th>
+                                    <th>Stop Loss</th>
                                     <th>Action</th>
                                 </tr>
                             </thead>
                             <tbody id="portfolio-table-body">
-                                <tr><td colspan="8" class="text-center">No holdings yet.</td></tr>
+                                <tr><td colspan="10" class="text-center">No holdings yet.</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -439,6 +441,30 @@
                 <div class="modal-actions">
                     <button type="button" class="secondary-btn close-modal">Cancel</button>
                     <button type="submit" class="primary-btn">Update</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <!-- Edit Targets Modal -->
+    <div id="edit-targets-modal" class="modal-overlay">
+        <div class="modal glass-card">
+            <h3>Set Price Alerts for <span id="edit-targets-symbol"></span></h3>
+            <p class="text-sm" style="margin-bottom: 1.5rem;">You'll receive an email alert when the LTP hits these levels.</p>
+            <form id="edit-targets-form">
+                <input type="hidden" id="edit-targets-symbol-val">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label><i class="ph ph-arrow-circle-up" style="color:var(--green-500)"></i> Target Price (Rs)</label>
+                        <input type="number" id="edit-targets-target" step="0.01" placeholder="Take Profit">
+                    </div>
+                    <div class="form-group">
+                        <label><i class="ph ph-arrow-circle-down" style="color:var(--red-500)"></i> Stop Loss (Rs)</label>
+                        <input type="number" id="edit-targets-sl" step="0.01" placeholder="Cut Loss">
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="secondary-btn close-modal">Cancel</button>
+                    <button type="submit" class="primary-btn">Save Alerts</button>
                 </div>
             </form>
         </div>

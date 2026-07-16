@@ -447,7 +447,7 @@ txForm.addEventListener('submit', async (e) => {
 function computeHoldings() {
     const holdings = {};
     transactionsData.forEach(tx => {
-        if (!holdings[tx.symbol]) holdings[tx.symbol] = { qty: 0, invested: 0, wacc: 0 };
+        if (!holdings[tx.symbol]) holdings[tx.symbol] = { qty: 0, invested: 0, wacc: 0, targetPrice: null, stopLoss: null };
 
         if (tx.type === 'BUY' || tx.type === 'BONUS') {
             const currentTotalValue = holdings[tx.symbol].qty * holdings[tx.symbol].wacc;
@@ -460,6 +460,10 @@ function computeHoldings() {
             holdings[tx.symbol].qty -= tx.qty;
             holdings[tx.symbol].invested = holdings[tx.symbol].qty * holdings[tx.symbol].wacc;
         }
+
+        // Always take latest non-null target/stop loss from transactions
+        if (tx.targetPrice != null) holdings[tx.symbol].targetPrice = tx.targetPrice;
+        if (tx.stopLoss != null) holdings[tx.symbol].stopLoss = tx.stopLoss;
     });
     return holdings;
 }
@@ -472,7 +476,7 @@ function updatePortfolio() {
     const holdingKeys = Object.keys(holdings).filter(k => holdings[k].qty > 0);
 
     if (holdingKeys.length === 0) {
-        portfolioTableBody.innerHTML = '<tr><td colspan="8" class="text-center">No active holdings.</td></tr>';
+        portfolioTableBody.innerHTML = '<tr><td colspan="10" class="text-center">No active holdings.</td></tr>';
         document.getElementById('portfolio-total-value').textContent = 'Rs 0.00';
         document.getElementById('portfolio-total-invested').textContent = 'Rs 0.00';
         document.getElementById('portfolio-pl').textContent = 'Rs 0.00';
@@ -501,6 +505,8 @@ function updatePortfolio() {
         const plClass = pl >= 0 ? 'positive' : 'negative';
 
         const tr = document.createElement('tr');
+        const targetDisplay = h.targetPrice ? `<span class="positive">Rs ${parseFloat(h.targetPrice).toFixed(2)}</span>` : '<span class="text-sm">—</span>';
+        const slDisplay = h.stopLoss ? `<span class="negative">Rs ${parseFloat(h.stopLoss).toFixed(2)}</span>` : '<span class="text-sm">—</span>';
         tr.innerHTML = `
             <td><strong>${symbol}</strong></td>
             <td>${h.qty}</td>
@@ -509,8 +515,11 @@ function updatePortfolio() {
             <td>Rs ${currentValue.toFixed(2)}</td>
             <td class="${plClass}">${pl > 0 ? '+' : ''}Rs ${pl.toFixed(2)}</td>
             <td><span class="badge ${plClass}">${pl > 0 ? '+' : ''}${plPerc.toFixed(2)}%</span></td>
-            <td>
+            <td>${targetDisplay}</td>
+            <td>${slDisplay}</td>
+            <td style="display:flex;gap:0.5rem;">
                 <button class="primary-btn btn-small sell-action-btn" data-symbol="${symbol}" data-qty="${h.qty}" data-ltp="${ltp}">Sell</button>
+                <button class="secondary-btn btn-small edit-targets-btn" data-symbol="${symbol}" data-target="${h.targetPrice || ''}" data-sl="${h.stopLoss || ''}"><i class="ph ph-bell"></i></button>
             </td>
         `;
         portfolioTableBody.appendChild(tr);
@@ -518,10 +527,19 @@ function updatePortfolio() {
 
     document.querySelectorAll('.sell-action-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
-            const sym = e.target.getAttribute('data-symbol');
-            const qty = e.target.getAttribute('data-qty');
-            const ltp = e.target.getAttribute('data-ltp');
+            const sym = e.currentTarget.getAttribute('data-symbol');
+            const qty = e.currentTarget.getAttribute('data-qty');
+            const ltp = e.currentTarget.getAttribute('data-ltp');
             openSellModal(sym, qty, ltp);
+        });
+    });
+
+    document.querySelectorAll('.edit-targets-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const sym = e.currentTarget.getAttribute('data-symbol');
+            const target = e.currentTarget.getAttribute('data-target');
+            const sl = e.currentTarget.getAttribute('data-sl');
+            openEditTargetsModal(sym, target, sl);
         });
     });
 
@@ -588,6 +606,41 @@ sellForm.addEventListener('submit', async (e) => {
         sellModal.classList.remove('active');
         sellForm.reset();
     } catch (err) { alert("Sell failed"); }
+});
+
+// --- Edit Targets Logic ---
+const editTargetsModal = document.getElementById('edit-targets-modal');
+const editTargetsForm = document.getElementById('edit-targets-form');
+
+function openEditTargetsModal(symbol, currentTarget, currentSl) {
+    document.getElementById('edit-targets-symbol').textContent = symbol;
+    document.getElementById('edit-targets-symbol-val').value = symbol;
+    document.getElementById('edit-targets-target').value = currentTarget || '';
+    document.getElementById('edit-targets-sl').value = currentSl || '';
+    editTargetsModal.classList.add('active');
+}
+
+editTargetsForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const symbol = document.getElementById('edit-targets-symbol-val').value;
+    const targetPrice = parseFloat(document.getElementById('edit-targets-target').value) || null;
+    const stopLoss = parseFloat(document.getElementById('edit-targets-sl').value) || null;
+
+    try {
+        // Update all BUY transactions for this symbol with the new target/sl
+        const txToUpdate = transactionsData.filter(tx => tx.symbol === symbol && tx.type === 'BUY');
+        for (const tx of txToUpdate) {
+            await updateDoc(doc(db, 'transactions', tx.id), {
+                targetPrice,
+                stopLoss,
+                alertTriggered: false // Reset so alert can fire again
+            });
+        }
+        editTargetsModal.classList.remove('active');
+        editTargetsForm.reset();
+    } catch (err) {
+        alert('Failed to update alerts.');
+    }
 });
 
 // --- Edit Transaction Logic ---
