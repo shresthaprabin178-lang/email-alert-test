@@ -56,18 +56,6 @@ const hlTableBody = document.getElementById('hl-table-body');
 const wlForm = document.getElementById('watchlist-form');
 
 // --- Theme & Mobile Menu ---
-// Apply saved theme on page load
-(function applyInitialTheme() {
-    const savedTheme = localStorage.getItem('stockalerts-theme') || 'theme-dark';
-    document.body.classList.remove('theme-dark', 'theme-light');
-    document.body.classList.add(savedTheme);
-    if (savedTheme === 'theme-light') {
-        themeToggleBtn.innerHTML = '<i class="ph ph-moon"></i> <span>Dark Mode</span>';
-    } else {
-        themeToggleBtn.innerHTML = '<i class="ph ph-sun"></i> <span>Light Mode</span>';
-    }
-})();
-
 themeToggleBtn.addEventListener('click', () => {
     const body = document.body;
     const isLight = body.classList.contains('theme-light');
@@ -75,12 +63,10 @@ themeToggleBtn.addEventListener('click', () => {
         body.classList.remove('theme-light');
         body.classList.add('theme-dark');
         themeToggleBtn.innerHTML = '<i class="ph ph-sun"></i> <span>Light Mode</span>';
-        localStorage.setItem('stockalerts-theme', 'theme-dark');
     } else {
         body.classList.remove('theme-dark');
         body.classList.add('theme-light');
         themeToggleBtn.innerHTML = '<i class="ph ph-moon"></i> <span>Dark Mode</span>';
-        localStorage.setItem('stockalerts-theme', 'theme-light');
     }
 });
 
@@ -724,25 +710,16 @@ function listenToWatchlist() {
             const liveStock = liveMarketData.find(s => s.symbol === data.symbol);
             if (liveStock) ltp = parseFloat(liveStock.ltp.replace(/,/g, ''));
             
-            const ltpBelowTarget = ltp > 0 && ltp <= data.targetBuy;
-            let statusBadge;
-            if (data.alertTriggered) {
-                statusBadge = '<span class="badge positive">✅ Alert Sent</span>';
-            } else if (ltpBelowTarget) {
-                statusBadge = '<span class="badge positive">🎯 Target Hit!</span>';
-            } else {
-                statusBadge = '<span class="badge">⏳ Watching</span>';
-            }
-
+            const isTriggered = ltp > 0 && ltp <= data.targetBuy;
+            
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td><strong>${data.symbol}</strong></td>
-                <td>${ltp ? 'Rs ' + ltp.toFixed(2) : 'N/A'}</td>
-                <td class="positive">Rs ${parseFloat(data.targetBuy).toFixed(2)}</td>
-                <td>${statusBadge}</td>
-                <td style="display:flex;gap:0.5rem;">
-                    ${data.alertTriggered ? `<button class="secondary-btn btn-small reset-wl-btn" data-id="${data.id}"><i class="ph ph-arrow-counter-clockwise"></i> Reset</button>` : ''}
-                    <button class="btn-icon delete-wl-btn" data-id="${data.id}" style="color:var(--red-500)"><i class="ph ph-trash"></i></button>
+                <td>Rs ${ltp || 'N/A'}</td>
+                <td>Rs ${data.targetBuy}</td>
+                <td>${data.alertTriggered ? '<span class="badge positive">Triggered</span>' : (isTriggered ? '<span class="badge positive">Hit!</span>' : '<span class="badge">Waiting</span>')}</td>
+                <td>
+                    <button class="btn-icon delete-wl-btn text-negative" data-id="${data.id}"><i class="ph ph-trash"></i></button>
                 </td>
             `;
             watchlistTableBody.appendChild(tr);
@@ -751,13 +728,6 @@ function listenToWatchlist() {
         document.querySelectorAll('.delete-wl-btn').forEach(btn => {
             btn.addEventListener('click', async (e) => {
                 await deleteDoc(doc(db, "watchlist", e.currentTarget.getAttribute('data-id')));
-            });
-        });
-
-        document.querySelectorAll('.reset-wl-btn').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                const id = e.currentTarget.getAttribute('data-id');
-                await updateDoc(doc(db, 'watchlist', id), { alertTriggered: false });
             });
         });
     });
