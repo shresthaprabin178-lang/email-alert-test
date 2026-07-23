@@ -9,20 +9,23 @@ require('dotenv').config();
 
 const { getFirestore } = require('firebase-admin/firestore');
 
-// This reads the raw JSON you pasted into the Render Environment Variable
+// Initialize Firebase Admin and Firestore
+let db = null;
 const serviceAccountStr = process.env.FIREBASE_SERVICE_ACCOUNT;
 if (serviceAccountStr) {
-    const serviceAccount = JSON.parse(serviceAccountStr);
-    admin.initializeApp({
-        credential: admin.cert(serviceAccount)
-    });
+    try {
+        const serviceAccount = JSON.parse(serviceAccountStr);
+        admin.initializeApp({
+            credential: admin.cert(serviceAccount)
+        });
+        db = getFirestore();
+        console.log("Firebase Admin initialized successfully.");
+    } catch (e) {
+        console.error("Failed to initialize Firebase Admin:", e.message);
+    }
 } else {
-    console.warn("FIREBASE_SERVICE_ACCOUNT env var missing. Running without firebase admin.");
-    // Dummy initialization for local testing without credentials if needed, though queries will fail.
-    // admin.initializeApp(); 
+    console.warn("FIREBASE_SERVICE_ACCOUNT env var missing. Running without Firebase.");
 }
-
-const db = admin.apps.length ? getFirestore() : null;
 
 const app = express();
 app.use(cors());
