@@ -39,8 +39,9 @@ async function sendEmail(to, subject, text) {
         console.warn('RESEND_API_KEY environment variable not set. Email not sent.');
         return;
     }
+    const fromEmail = process.env.SENDER_EMAIL || 'Stock Alerts <alerts@prabinkshrestha.com.np>';
     const response = await axios.post('https://api.resend.com/emails', {
-        from: 'Stock Alerts <onboarding@resend.dev>',
+        from: fromEmail,
         to: [to],
         subject: subject,
         text: text
@@ -175,7 +176,7 @@ async function checkAlerts() {
                 try {
                     await sendEmail(wl.email, alertSubject, alertMsg);
                     await db.collection('watchlist').doc(docSnap.id).update({ alertTriggered: true });
-                } catch (e) {}
+                } catch (e) { }
             }
         }
 
