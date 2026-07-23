@@ -875,3 +875,37 @@ function applyHlFilter() {
 }
 
 document.getElementById('apply-hl-filter').addEventListener('click', applyHlFilter);
+
+// --- Reset Portfolio ---
+async function resetPortfolio() {
+    if (!currentUser) return;
+    
+    const confirmFirst = confirm("⚠️ WARNING: This will permanently delete all your transaction history and reset your cash balance & initial investment to Rs 0.00.\n\nAre you sure you want to proceed?");
+    if (!confirmFirst) return;
+    
+    const confirmSecond = confirm("🚨 FINAL CONFIRMATION: This action CANNOT be undone. Are you absolutely sure?");
+    if (!confirmSecond) return;
+
+    try {
+        // Delete all transactions from Firestore
+        const deletePromises = transactionsData.map(tx => deleteDoc(doc(db, "transactions", tx.id)));
+        await Promise.all(deletePromises);
+
+        // Reset cash in database
+        await updateDoc(doc(db, "users", currentUser.uid), { 
+            cashBalance: 0,
+            totalDeposited: 0
+        });
+
+        currentCash = 0;
+        totalDeposited = 0;
+        updateCashDisplay();
+        
+        alert("Portfolio reset successfully!");
+    } catch (error) {
+        console.error("Error resetting portfolio:", error);
+        alert("Failed to reset portfolio: " + error.message);
+    }
+}
+
+document.getElementById('reset-portfolio-btn').addEventListener('click', resetPortfolio);
