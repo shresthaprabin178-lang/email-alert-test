@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-const nodemailer = require('nodemailer');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const path = require('path');
@@ -39,9 +38,8 @@ async function sendEmail(to, subject, text) {
         console.warn('RESEND_API_KEY environment variable not set. Email not sent.');
         return;
     }
-    const fromEmail = process.env.SENDER_EMAIL || 'Stock Alerts <alerts@prabinkshrestha.com.np>';
     const response = await axios.post('https://api.resend.com/emails', {
-        from: fromEmail,
+        from: 'Stock Alerts <alerts@prabinkshrestha.com.np>',
         to: [to],
         subject: subject,
         text: text
