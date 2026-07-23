@@ -55,18 +55,26 @@ const watchlistTableBody = document.getElementById('watchlist-table-body');
 const hlTableBody = document.getElementById('hl-table-body');
 const wlForm = document.getElementById('watchlist-form');
 
-// --- Theme & Mobile Menu ---
+// --- Theme Persistence & Initialization ---
+const savedTheme = localStorage.getItem('theme') || 'theme-dark';
+document.body.className = savedTheme;
+if (savedTheme === 'theme-light') {
+    themeToggleBtn.innerHTML = '<i class="ph ph-moon"></i> <span>Dark Mode</span>';
+} else {
+    themeToggleBtn.innerHTML = '<i class="ph ph-sun"></i> <span>Light Mode</span>';
+}
+
 themeToggleBtn.addEventListener('click', () => {
     const body = document.body;
     const isLight = body.classList.contains('theme-light');
     if (isLight) {
-        body.classList.remove('theme-light');
-        body.classList.add('theme-dark');
+        body.className = 'theme-dark';
         themeToggleBtn.innerHTML = '<i class="ph ph-sun"></i> <span>Light Mode</span>';
+        localStorage.setItem('theme', 'theme-dark');
     } else {
-        body.classList.remove('theme-dark');
-        body.classList.add('theme-light');
+        body.className = 'theme-light';
         themeToggleBtn.innerHTML = '<i class="ph ph-moon"></i> <span>Dark Mode</span>';
+        localStorage.setItem('theme', 'theme-light');
     }
 });
 
