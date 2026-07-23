@@ -477,71 +477,66 @@ function updatePortfolio() {
 
     if (holdingKeys.length === 0) {
         portfolioTableBody.innerHTML = '<tr><td colspan="10" class="text-center">No active holdings.</td></tr>';
-        document.getElementById('portfolio-total-value').textContent = 'Rs 0.00';
-        document.getElementById('portfolio-total-invested').textContent = 'Rs 0.00';
-        document.getElementById('portfolio-pl').textContent = 'Rs 0.00';
-        document.getElementById('portfolio-pl-perc').textContent = '0.00%';
-        return;
+    } else {
+        holdingKeys.forEach(symbol => {
+            const h = holdings[symbol];
+            totalInvested += h.invested;
+            
+            let ltp = h.wacc;
+            const liveStock = liveMarketData.find(s => s.symbol === symbol);
+            if (liveStock) ltp = parseFloat(liveStock.ltp.replace(/,/g, ''));
+
+            // Calculate potential net receivable if sold today (assume short-term tax for conservative estimate)
+            const fees = calculateNepseFees('SELL', h.qty, ltp, h.wacc, false);
+            const netReceivable = fees.totalAmount;
+            
+            const currentValue = h.qty * ltp;
+            currentTotalValue += currentValue;
+            totalNetValue += netReceivable;
+
+            const pl = netReceivable - h.invested;
+            const plPerc = (pl / h.invested) * 100;
+            const plClass = pl >= 0 ? 'positive' : 'negative';
+
+            const tr = document.createElement('tr');
+            const targetDisplay = h.targetPrice ? `<span class="positive">Rs ${parseFloat(h.targetPrice).toFixed(2)}</span>` : '<span class="text-sm">—</span>';
+            const slDisplay = h.stopLoss ? `<span class="negative">Rs ${parseFloat(h.stopLoss).toFixed(2)}</span>` : '<span class="text-sm">—</span>';
+            tr.innerHTML = `
+                <td><strong>${symbol}</strong></td>
+                <td>${h.qty}</td>
+                <td>Rs ${h.wacc.toFixed(2)}</td>
+                <td>Rs ${ltp.toFixed(2)}</td>
+                <td>Rs ${currentValue.toFixed(2)}</td>
+                <td class="${plClass}">${pl > 0 ? '+' : ''}Rs ${pl.toFixed(2)}</td>
+                <td><span class="badge ${plClass}">${pl > 0 ? '+' : ''}${plPerc.toFixed(2)}%</span></td>
+                <td>${targetDisplay}</td>
+                <td>${slDisplay}</td>
+                <td style="display:flex;gap:0.5rem;">
+                    <button class="primary-btn btn-small sell-action-btn" data-symbol="${symbol}" data-qty="${h.qty}" data-ltp="${ltp}">Sell</button>
+                    <button class="secondary-btn btn-small edit-targets-btn" data-symbol="${symbol}" data-target="${h.targetPrice || ''}" data-sl="${h.stopLoss || ''}"><i class="ph ph-bell"></i></button>
+                </td>
+            `;
+            portfolioTableBody.appendChild(tr);
+        });
+
+        document.querySelectorAll('.sell-action-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const sym = e.currentTarget.getAttribute('data-symbol');
+                const qty = e.currentTarget.getAttribute('data-qty');
+                const ltp = e.currentTarget.getAttribute('data-ltp');
+                openSellModal(sym, qty, ltp);
+            });
+        });
+
+        document.querySelectorAll('.edit-targets-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const sym = e.currentTarget.getAttribute('data-symbol');
+                const target = e.currentTarget.getAttribute('data-target');
+                const sl = e.currentTarget.getAttribute('data-sl');
+                openEditTargetsModal(sym, target, sl);
+            });
+        });
     }
-
-    holdingKeys.forEach(symbol => {
-        const h = holdings[symbol];
-        totalInvested += h.invested;
-        
-        let ltp = h.wacc;
-        const liveStock = liveMarketData.find(s => s.symbol === symbol);
-        if (liveStock) ltp = parseFloat(liveStock.ltp.replace(/,/g, ''));
-
-        // Calculate potential net receivable if sold today (assume short-term tax for conservative estimate)
-        const fees = calculateNepseFees('SELL', h.qty, ltp, h.wacc, false);
-        const netReceivable = fees.totalAmount;
-        
-        const currentValue = h.qty * ltp;
-        currentTotalValue += currentValue;
-        totalNetValue += netReceivable;
-
-        const pl = netReceivable - h.invested;
-        const plPerc = (pl / h.invested) * 100;
-        const plClass = pl >= 0 ? 'positive' : 'negative';
-
-        const tr = document.createElement('tr');
-        const targetDisplay = h.targetPrice ? `<span class="positive">Rs ${parseFloat(h.targetPrice).toFixed(2)}</span>` : '<span class="text-sm">—</span>';
-        const slDisplay = h.stopLoss ? `<span class="negative">Rs ${parseFloat(h.stopLoss).toFixed(2)}</span>` : '<span class="text-sm">—</span>';
-        tr.innerHTML = `
-            <td><strong>${symbol}</strong></td>
-            <td>${h.qty}</td>
-            <td>Rs ${h.wacc.toFixed(2)}</td>
-            <td>Rs ${ltp.toFixed(2)}</td>
-            <td>Rs ${currentValue.toFixed(2)}</td>
-            <td class="${plClass}">${pl > 0 ? '+' : ''}Rs ${pl.toFixed(2)}</td>
-            <td><span class="badge ${plClass}">${pl > 0 ? '+' : ''}${plPerc.toFixed(2)}%</span></td>
-            <td>${targetDisplay}</td>
-            <td>${slDisplay}</td>
-            <td style="display:flex;gap:0.5rem;">
-                <button class="primary-btn btn-small sell-action-btn" data-symbol="${symbol}" data-qty="${h.qty}" data-ltp="${ltp}">Sell</button>
-                <button class="secondary-btn btn-small edit-targets-btn" data-symbol="${symbol}" data-target="${h.targetPrice || ''}" data-sl="${h.stopLoss || ''}"><i class="ph ph-bell"></i></button>
-            </td>
-        `;
-        portfolioTableBody.appendChild(tr);
-    });
-
-    document.querySelectorAll('.sell-action-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const sym = e.currentTarget.getAttribute('data-symbol');
-            const qty = e.currentTarget.getAttribute('data-qty');
-            const ltp = e.currentTarget.getAttribute('data-ltp');
-            openSellModal(sym, qty, ltp);
-        });
-    });
-
-    document.querySelectorAll('.edit-targets-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const sym = e.currentTarget.getAttribute('data-symbol');
-            const target = e.currentTarget.getAttribute('data-target');
-            const sl = e.currentTarget.getAttribute('data-sl');
-            openEditTargetsModal(sym, target, sl);
-        });
-    });
 
     document.getElementById('portfolio-total-invested').textContent = `Rs ${totalInvested.toFixed(2)}`;
     document.getElementById('portfolio-total-value').textContent = `Rs ${currentTotalValue.toFixed(2)}`;
