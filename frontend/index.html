@@ -48,10 +48,10 @@
             </div>
             
             <ul class="nav-links">
-                <li class="active" data-tab="live">
+                <li data-tab="live">
                     <i class="ph ph-trend-up"></i> Live Market
                 </li>
-                <li data-tab="portfolio">
+                <li class="active" data-tab="portfolio">
                     <i class="ph ph-briefcase"></i> Portfolio
                 </li>
                 <li data-tab="transactions">
@@ -85,7 +85,7 @@
         <main class="content-area">
             <!-- Top Bar -->
             <header class="topbar">
-                <h2 id="current-tab-title">Live Market</h2>
+                <h2 id="current-tab-title">Portfolio</h2>
                 <div class="status-indicator">
                     <span class="dot active"></span>
                     <span id="system-status">System Online</span>
@@ -93,7 +93,7 @@
             </header>
 
             <!-- Tab Content: Live Market -->
-            <div id="tab-live" class="tab-content active">
+            <div id="tab-live" class="tab-content">
                 <div class="glass-card fill-height">
                     <div class="table-controls">
                         <h3>Today's Share Prices</h3>
@@ -126,7 +126,7 @@
             </div>
 
             <!-- Tab Content: Portfolio -->
-            <div id="tab-portfolio" class="tab-content">
+            <div id="tab-portfolio" class="tab-content active">
                 <div class="metrics-grid">
                     <div class="metric-card glass-card">
                         <div class="metric-header">
@@ -170,6 +170,7 @@
                                     <th>Qty</th>
                                     <th>WACC</th>
                                     <th>LTP</th>
+                                    <th>Current Inv.</th>
                                     <th>Current Value</th>
                                     <th>P&L (Net)</th>
                                     <th>P&L %</th>
@@ -179,7 +180,7 @@
                                 </tr>
                             </thead>
                             <tbody id="portfolio-table-body">
-                                <tr><td colspan="10" class="text-center">No holdings yet.</td></tr>
+                                <tr><td colspan="11" class="text-center">No holdings yet.</td></tr>
                             </tbody>
                         </table>
                     </div>

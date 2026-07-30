@@ -455,7 +455,7 @@ txForm.addEventListener('submit', async (e) => {
 function computeHoldings() {
     const holdings = {};
     transactionsData.forEach(tx => {
-        if (!holdings[tx.symbol]) holdings[tx.symbol] = { qty: 0, invested: 0, wacc: 0, targetPrice: null, stopLoss: null };
+        if (!holdings[tx.symbol]) holdings[tx.symbol] = { qty: 0, invested: 0, bonusCost: 0, wacc: 0, targetPrice: null, stopLoss: null };
 
         if (tx.type === 'BUY' || tx.type === 'BONUS') {
             const currentTotalValue = holdings[tx.symbol].qty * holdings[tx.symbol].wacc;
@@ -463,8 +463,20 @@ function computeHoldings() {
             
             holdings[tx.symbol].qty += tx.qty;
             holdings[tx.symbol].wacc = (currentTotalValue + newTxValue) / holdings[tx.symbol].qty;
+
+            // Track bonus cost separately: bonus adds Rs 100 * qty to WACC but should NOT count as actual investment
+            if (tx.type === 'BONUS') {
+                holdings[tx.symbol].bonusCost += tx.qty * 100;
+            }
+
+            // invested = qty * wacc (includes bonus cost base for WACC)
+            // actualInvested (for display) = invested - bonusCost
             holdings[tx.symbol].invested = holdings[tx.symbol].qty * holdings[tx.symbol].wacc;
         } else if (tx.type === 'SELL') {
+            // When selling, proportionally reduce bonus cost
+            const sellRatio = tx.qty / holdings[tx.symbol].qty;
+            holdings[tx.symbol].bonusCost -= holdings[tx.symbol].bonusCost * sellRatio;
+            
             holdings[tx.symbol].qty -= tx.qty;
             holdings[tx.symbol].invested = holdings[tx.symbol].qty * holdings[tx.symbol].wacc;
         }
@@ -484,11 +496,13 @@ function updatePortfolio() {
     const holdingKeys = Object.keys(holdings).filter(k => holdings[k].qty > 0);
 
     if (holdingKeys.length === 0) {
-        portfolioTableBody.innerHTML = '<tr><td colspan="10" class="text-center">No active holdings.</td></tr>';
+        portfolioTableBody.innerHTML = '<tr><td colspan="11" class="text-center">No active holdings.</td></tr>';
     } else {
         holdingKeys.forEach(symbol => {
             const h = holdings[symbol];
-            totalInvested += h.invested;
+            // Current Investment = invested - bonusCost (exclude Rs 100 bonus cost base)
+            const actualInvested = h.invested - (h.bonusCost || 0);
+            totalInvested += actualInvested;
             
             let ltp = h.wacc;
             const liveStock = liveMarketData.find(s => s.symbol === symbol);
@@ -502,8 +516,8 @@ function updatePortfolio() {
             currentTotalValue += currentValue;
             totalNetValue += netReceivable;
 
-            const pl = netReceivable - h.invested;
-            const plPerc = (pl / h.invested) * 100;
+            const pl = netReceivable - actualInvested;
+            const plPerc = actualInvested > 0 ? (pl / actualInvested) * 100 : 0;
             const plClass = pl >= 0 ? 'positive' : 'negative';
 
             const tr = document.createElement('tr');
@@ -514,6 +528,7 @@ function updatePortfolio() {
                 <td>${h.qty}</td>
                 <td>Rs ${h.wacc.toFixed(2)}</td>
                 <td>Rs ${ltp.toFixed(2)}</td>
+                <td>Rs ${actualInvested.toFixed(2)}</td>
                 <td>Rs ${currentValue.toFixed(2)}</td>
                 <td class="${plClass}">${pl > 0 ? '+' : ''}Rs ${pl.toFixed(2)}</td>
                 <td><span class="badge ${plClass}">${pl > 0 ? '+' : ''}${plPerc.toFixed(2)}%</span></td>
