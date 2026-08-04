@@ -680,3 +680,20 @@ input:focus, select:focus {
     border-radius: 12px;
     font-size: 0.8rem;
 }
+
+.stock-symbol-btn {
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 0.95rem;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    padding: 0;
+    transition: color 0.2s ease;
+}
+
+.stock-symbol-btn:hover {
+    color: var(--blue-600);
+}

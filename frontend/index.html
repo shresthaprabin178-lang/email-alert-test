@@ -428,16 +428,17 @@
                         <table id="stocks-table">
                             <thead>
                                 <tr>
+                                    <th>S.N.</th>
                                     <th>Symbol</th>
-                                    <th>Stored Records</th>
-                                    <th>Recorded Date Range</th>
-                                    <th>Latest Close</th>
-                                    <th>Latest Volume</th>
-                                    <th>Action</th>
+                                    <th>High</th>
+                                    <th>Low</th>
+                                    <th>LTP</th>
+                                    <th>CH</th>
+                                    <th>% Change</th>
                                 </tr>
                             </thead>
                             <tbody id="stocks-table-body">
-                                <tr><td colspan="6" class="text-center">Loading Firebase stock records...</td></tr>
+                                <tr><td colspan="7" class="text-center">Loading Firebase stock records...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -576,12 +577,15 @@
                     <thead>
                         <tr>
                             <th>Date</th>
-                            <th>Closing Price</th>
-                            <th>Daily Volume</th>
+                            <th>High</th>
+                            <th>Low</th>
+                            <th>LTP</th>
+                            <th>CH</th>
+                            <th>% Change</th>
                         </tr>
                     </thead>
                     <tbody id="stock-history-table-body">
-                        <tr><td colspan="3" class="text-center">Loading history...</td></tr>
+                        <tr><td colspan="6" class="text-center">Loading history...</td></tr>
                     </tbody>
                 </table>
             </div>

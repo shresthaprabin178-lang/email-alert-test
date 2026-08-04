@@ -1072,7 +1072,11 @@ async function syncDailyHistory(stocks) {
     const todayDateStr = new Date().toISOString().split('T')[0];
 
     for (const stock of stocks) {
-        const ltp = parseFloat(stock.ltp.replace(/,/g, ''));
+        const ltp = parseFloat((stock.ltp || '0').replace(/,/g, ''));
+        const high = parseFloat((stock.high || stock.ltp || '0').replace(/,/g, ''));
+        const low = parseFloat((stock.low || stock.ltp || '0').replace(/,/g, ''));
+        const diff = parseFloat((stock.diff || '0').replace(/,/g, ''));
+        const percDiff = parseFloat((stock.percDiff || '0').replace(/,/g, ''));
         const vol = parseFloat((stock.volume || '0').replace(/,/g, ''));
         if (isNaN(ltp) || ltp <= 0) continue;
 
@@ -1082,6 +1086,10 @@ async function syncDailyHistory(stocks) {
                 symbol: stock.symbol,
                 date: todayDateStr,
                 close: ltp,
+                high: high,
+                low: low,
+                diff: diff,
+                percDiff: percDiff,
                 volume: vol,
                 updatedAt: new Date()
             }, { merge: true });
@@ -1104,9 +1112,25 @@ function generateFallbackCandles(symbol, currentLtp, currentVol) {
     let runningPrice = basePrice;
     return dates.map((dateStr, i) => {
         const pseudoRandom = Math.sin((symbol.charCodeAt(0) || 1) * (i + 1) * 7.5);
-        runningPrice = Math.max(10, runningPrice * (1 + pseudoRandom * 0.025));
+        const pctChange = pseudoRandom * 0.025;
+        const prevPrice = runningPrice;
+        runningPrice = Math.max(10, runningPrice * (1 + pctChange));
+
+        const ch = runningPrice - prevPrice;
+        const chPerc = prevPrice > 0 ? (ch / prevPrice) * 100 : 0;
+        const high = Math.max(runningPrice, prevPrice) * (1 + Math.abs(pseudoRandom) * 0.01);
+        const low = Math.min(runningPrice, prevPrice) * (1 - Math.abs(pseudoRandom) * 0.01);
         const dayVol = Math.round(baseVol * (0.7 + Math.abs(pseudoRandom) * 0.6));
-        return { date: dateStr, close: parseFloat(runningPrice.toFixed(2)), volume: dayVol };
+
+        return { 
+            date: dateStr, 
+            close: parseFloat(runningPrice.toFixed(2)),
+            high: parseFloat(high.toFixed(2)),
+            low: parseFloat(low.toFixed(2)),
+            diff: parseFloat(ch.toFixed(2)),
+            percDiff: parseFloat(chPerc.toFixed(2)),
+            volume: dayVol 
+        };
     });
 }
 
@@ -1258,7 +1282,7 @@ document.getElementById('setup-signal-filter')?.addEventListener('change', rende
 
 async function fetchStocksData() {
     if (!stocksTableBody) return;
-    stocksTableBody.innerHTML = '<tr><td colspan="6" class="text-center">Querying Firebase stock records...</td></tr>';
+    stocksTableBody.innerHTML = '<tr><td colspan="7" class="text-center">Querying Firebase stock records...</td></tr>';
 
     try {
         const historyRef = collection(db, "daily_history");
@@ -1274,10 +1298,22 @@ async function fetchStocksData() {
             if (!stockMap[sym]) {
                 stockMap[sym] = [];
             }
+
+            const close = typeof data.close === 'number' ? data.close : parseFloat(data.close) || 0;
+            const high = typeof data.high === 'number' ? data.high : parseFloat(data.high) || close;
+            const low = typeof data.low === 'number' ? data.low : parseFloat(data.low) || close;
+            const diff = typeof data.diff === 'number' ? data.diff : parseFloat(data.diff) || 0;
+            const percDiff = typeof data.percDiff === 'number' ? data.percDiff : parseFloat(data.percDiff) || 0;
+            const volume = typeof data.volume === 'number' ? data.volume : parseFloat(data.volume) || 0;
+
             stockMap[sym].push({
                 date: data.date || 'N/A',
-                close: typeof data.close === 'number' ? data.close : parseFloat(data.close) || 0,
-                volume: typeof data.volume === 'number' ? data.volume : parseFloat(data.volume) || 0
+                close,
+                high,
+                low,
+                diff,
+                percDiff,
+                volume
             });
         });
 
@@ -1286,7 +1322,7 @@ async function fetchStocksData() {
             const records = stockMap[symbol];
             records.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-            const latest = records[records.length - 1] || { close: 0, volume: 0, date: 'N/A' };
+            const latest = records[records.length - 1] || { close: 0, high: 0, low: 0, diff: 0, percDiff: 0, volume: 0, date: 'N/A' };
             const firstDate = records[0] ? records[0].date : 'N/A';
             const lastDate = latest.date;
 
@@ -1295,6 +1331,10 @@ async function fetchStocksData() {
                 recordCount: records.length,
                 dateRange: firstDate === lastDate ? firstDate : `${firstDate} to ${lastDate}`,
                 latestClose: latest.close,
+                latestHigh: latest.high,
+                latestLow: latest.low,
+                latestDiff: latest.diff,
+                latestPercDiff: latest.percDiff,
                 latestVolume: latest.volume,
                 records
             };
@@ -1305,7 +1345,7 @@ async function fetchStocksData() {
         renderStocksTable();
     } catch (err) {
         console.error("Error fetching stocks from Firebase:", err);
-        stocksTableBody.innerHTML = '<tr><td colspan="6" class="text-center negative">Failed to query Firebase stock records.</td></tr>';
+        stocksTableBody.innerHTML = '<tr><td colspan="7" class="text-center negative">Failed to query Firebase stock records.</td></tr>';
     }
 }
 
@@ -1313,7 +1353,7 @@ function renderStocksTable() {
     if (!stocksTableBody) return;
 
     if (!stocksDatabaseData || stocksDatabaseData.length === 0) {
-        stocksTableBody.innerHTML = '<tr><td colspan="6" class="text-center">No stock records found in Firebase Firestore daily_history.</td></tr>';
+        stocksTableBody.innerHTML = '<tr><td colspan="7" class="text-center">No stock records found in Firebase Firestore daily_history.</td></tr>';
         return;
     }
 
@@ -1326,23 +1366,29 @@ function renderStocksTable() {
     stocksTableBody.innerHTML = '';
 
     if (filtered.length === 0) {
-        stocksTableBody.innerHTML = '<tr><td colspan="6" class="text-center">No stocks match your search filter.</td></tr>';
+        stocksTableBody.innerHTML = '<tr><td colspan="7" class="text-center">No stocks match your search filter.</td></tr>';
         return;
     }
 
-    filtered.forEach(stock => {
+    filtered.forEach((stock, index) => {
         const tr = document.createElement('tr');
+        const diff = stock.latestDiff;
+        const perc = stock.latestPercDiff;
+        const diffClass = diff >= 0 ? 'positive' : 'negative';
+        const diffSign = diff > 0 ? '+' : '';
+
         tr.innerHTML = `
-            <td><strong>${stock.symbol}</strong></td>
-            <td><span class="badge-count">${stock.recordCount} Days</span></td>
-            <td class="text-sm text-secondary">${stock.dateRange}</td>
-            <td>Rs ${stock.latestClose.toFixed(2)}</td>
-            <td>${stock.latestVolume.toLocaleString()}</td>
+            <td>${index + 1}</td>
             <td>
-                <button class="primary-btn btn-small view-stock-history-btn" data-symbol="${stock.symbol}">
-                    <i class="ph ph-clock-counter-clockwise"></i> View History
+                <button class="stock-symbol-btn view-stock-history-btn" data-symbol="${stock.symbol}" title="Click to view date-wise history">
+                    ${stock.symbol}
                 </button>
             </td>
+            <td>Rs ${stock.latestHigh.toFixed(2)}</td>
+            <td>Rs ${stock.latestLow.toFixed(2)}</td>
+            <td>Rs ${stock.latestClose.toFixed(2)}</td>
+            <td class="${diffClass}">${diffSign}${diff.toFixed(2)}</td>
+            <td><span class="badge ${diffClass}">${diffSign}${perc.toFixed(2)}%</span></td>
         `;
         stocksTableBody.appendChild(tr);
     });
@@ -1374,10 +1420,18 @@ function openStockHistoryModal(symbol) {
 
     sortedDesc.forEach(record => {
         const tr = document.createElement('tr');
+        const diff = record.diff;
+        const perc = record.percDiff;
+        const diffClass = diff >= 0 ? 'positive' : 'negative';
+        const diffSign = diff > 0 ? '+' : '';
+
         tr.innerHTML = `
-            <td>${record.date}</td>
+            <td><strong>${record.date}</strong></td>
+            <td>Rs ${record.high.toFixed(2)}</td>
+            <td>Rs ${record.low.toFixed(2)}</td>
             <td>Rs ${record.close.toFixed(2)}</td>
-            <td>${record.volume.toLocaleString()}</td>
+            <td class="${diffClass}">${diffSign}${diff.toFixed(2)}</td>
+            <td><span class="badge ${diffClass}">${diffSign}${perc.toFixed(2)}%</span></td>
         `;
         tableBody.appendChild(tr);
     });
