@@ -22,6 +22,7 @@ let liveMarketData = [];
 let hlMarketData = []; // 52 week data
 let setupEvaluatedData = []; // Setup tab calculated stocks data
 let setupHistoricalCache = {}; // Historical candles cache
+let stocksDatabaseData = []; // Stocks tab data from Firebase
 let transactionsData = [];
 let watchlistData = [];
 let currentCash = 0;
@@ -56,6 +57,7 @@ const liveTableBody = document.getElementById('live-table-body');
 const watchlistTableBody = document.getElementById('watchlist-table-body');
 const hlTableBody = document.getElementById('hl-table-body');
 const setupTableBody = document.getElementById('setup-table-body');
+const stocksTableBody = document.getElementById('stocks-table-body');
 const wlForm = document.getElementById('watchlist-form');
 
 // --- Theme Persistence & Initialization ---
@@ -107,7 +109,8 @@ navLinks.forEach(link => {
             'transactions': 'Transactions', 
             'watchlist': 'Watchlist', 
             '52week': '52-Week H/L Screener',
-            'setup': 'Swing Trading Setup'
+            'setup': 'Swing Trading Setup',
+            'stocks': 'Firebase Stock Database'
         };
         tabTitle.textContent = titles[tabId];
 
@@ -122,6 +125,10 @@ navLinks.forEach(link => {
 
         if (tabId === 'setup' && setupEvaluatedData.length === 0) {
             fetchSetupData();
+        }
+
+        if (tabId === 'stocks' && stocksDatabaseData.length === 0) {
+            fetchStocksData();
         }
     });
 });
@@ -1242,3 +1249,142 @@ function renderSetupTable() {
 document.getElementById('refresh-setup-btn')?.addEventListener('click', fetchSetupData);
 document.getElementById('setup-search-input')?.addEventListener('input', renderSetupTable);
 document.getElementById('setup-signal-filter')?.addEventListener('change', renderSetupTable);
+
+// ==========================================================================
+// --- 6th TAB: FIREBASE STOCK DATABASE MODULE ---
+// Purely public stock records stored in Firebase Firestore.
+// Personal portfolio holdings are completely excluded.
+// ==========================================================================
+
+async function fetchStocksData() {
+    if (!stocksTableBody) return;
+    stocksTableBody.innerHTML = '<tr><td colspan="6" class="text-center">Querying Firebase stock records...</td></tr>';
+
+    try {
+        const historyRef = collection(db, "daily_history");
+        const querySnap = await getDocs(historyRef);
+
+        const stockMap = {};
+
+        querySnap.forEach(docSnap => {
+            const data = docSnap.data();
+            if (!data || !data.symbol) return;
+
+            const sym = data.symbol.toUpperCase();
+            if (!stockMap[sym]) {
+                stockMap[sym] = [];
+            }
+            stockMap[sym].push({
+                date: data.date || 'N/A',
+                close: typeof data.close === 'number' ? data.close : parseFloat(data.close) || 0,
+                volume: typeof data.volume === 'number' ? data.volume : parseFloat(data.volume) || 0
+            });
+        });
+
+        // Convert grouped object to array
+        stocksDatabaseData = Object.keys(stockMap).map(symbol => {
+            const records = stockMap[symbol];
+            records.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            const latest = records[records.length - 1] || { close: 0, volume: 0, date: 'N/A' };
+            const firstDate = records[0] ? records[0].date : 'N/A';
+            const lastDate = latest.date;
+
+            return {
+                symbol,
+                recordCount: records.length,
+                dateRange: firstDate === lastDate ? firstDate : `${firstDate} to ${lastDate}`,
+                latestClose: latest.close,
+                latestVolume: latest.volume,
+                records
+            };
+        });
+
+        stocksDatabaseData.sort((a, b) => a.symbol.localeCompare(b.symbol));
+
+        renderStocksTable();
+    } catch (err) {
+        console.error("Error fetching stocks from Firebase:", err);
+        stocksTableBody.innerHTML = '<tr><td colspan="6" class="text-center negative">Failed to query Firebase stock records.</td></tr>';
+    }
+}
+
+function renderStocksTable() {
+    if (!stocksTableBody) return;
+
+    if (!stocksDatabaseData || stocksDatabaseData.length === 0) {
+        stocksTableBody.innerHTML = '<tr><td colspan="6" class="text-center">No stock records found in Firebase Firestore daily_history.</td></tr>';
+        return;
+    }
+
+    const searchQuery = (document.getElementById('stocks-search-input')?.value || '').toLowerCase().trim();
+
+    const filtered = stocksDatabaseData.filter(item => {
+        return item.symbol.toLowerCase().includes(searchQuery);
+    });
+
+    stocksTableBody.innerHTML = '';
+
+    if (filtered.length === 0) {
+        stocksTableBody.innerHTML = '<tr><td colspan="6" class="text-center">No stocks match your search filter.</td></tr>';
+        return;
+    }
+
+    filtered.forEach(stock => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><strong>${stock.symbol}</strong></td>
+            <td><span class="badge-count">${stock.recordCount} Days</span></td>
+            <td class="text-sm text-secondary">${stock.dateRange}</td>
+            <td>Rs ${stock.latestClose.toFixed(2)}</td>
+            <td>${stock.latestVolume.toLocaleString()}</td>
+            <td>
+                <button class="primary-btn btn-small view-stock-history-btn" data-symbol="${stock.symbol}">
+                    <i class="ph ph-clock-counter-clockwise"></i> View History
+                </button>
+            </td>
+        `;
+        stocksTableBody.appendChild(tr);
+    });
+
+    document.querySelectorAll('.view-stock-history-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const symbol = e.currentTarget.getAttribute('data-symbol');
+            openStockHistoryModal(symbol);
+        });
+    });
+}
+
+function openStockHistoryModal(symbol) {
+    const modal = document.getElementById('stock-history-modal');
+    const modalSymbol = document.getElementById('modal-stock-symbol');
+    const modalCount = document.getElementById('modal-stock-count');
+    const tableBody = document.getElementById('stock-history-table-body');
+
+    if (!modal || !tableBody) return;
+
+    const stock = stocksDatabaseData.find(s => s.symbol === symbol);
+    if (!stock) return;
+
+    modalSymbol.textContent = stock.symbol;
+    modalCount.textContent = stock.recordCount;
+    tableBody.innerHTML = '';
+
+    const sortedDesc = [...stock.records].reverse();
+
+    sortedDesc.forEach(record => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${record.date}</td>
+            <td>Rs ${record.close.toFixed(2)}</td>
+            <td>${record.volume.toLocaleString()}</td>
+        `;
+        tableBody.appendChild(tr);
+    });
+
+    modal.classList.add('active');
+}
+
+// Stocks Tab Event Listeners
+document.getElementById('refresh-stocks-btn')?.addEventListener('click', fetchStocksData);
+document.getElementById('stocks-search-input')?.addEventListener('input', renderStocksTable);

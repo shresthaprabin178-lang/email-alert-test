@@ -66,6 +66,9 @@
                 <li data-tab="setup">
                     <i class="ph ph-lightning"></i> Setup
                 </li>
+                <li data-tab="stocks">
+                    <i class="ph ph-database"></i> Stocks
+                </li>
             </ul>
 
             <div class="sidebar-bottom">
@@ -402,6 +405,44 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Tab Content: Stocks (Firebase Stock Database Inspector) -->
+            <div id="tab-stocks" class="tab-content">
+                <div class="glass-card fill-height">
+                    <div class="table-controls">
+                        <div>
+                            <h3>Firebase Stock Database</h3>
+                            <p class="text-sm text-secondary" style="margin-top: 0.25rem;">
+                                Public stock records & daily historical price/volume logs stored in Firebase Firestore.
+                            </p>
+                        </div>
+                        <div class="controls-right filters">
+                            <div class="search-box">
+                                <i class="ph ph-magnifying-glass"></i>
+                                <input type="text" id="stocks-search-input" placeholder="Search Symbol...">
+                            </div>
+                            <button id="refresh-stocks-btn" class="secondary-btn"><i class="ph ph-arrows-clockwise"></i> Refresh</button>
+                        </div>
+                    </div>
+                    <div class="table-container" style="margin-top: 1rem;">
+                        <table id="stocks-table">
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>Stored Records</th>
+                                    <th>Recorded Date Range</th>
+                                    <th>Latest Close</th>
+                                    <th>Latest Volume</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="stocks-table-body">
+                                <tr><td colspan="6" class="text-center">Loading Firebase stock records...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -517,6 +558,36 @@
                     <button type="submit" class="primary-btn">Save Alerts</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Stock History Detail Modal -->
+    <div id="stock-history-modal" class="modal-overlay">
+        <div class="modal glass-card" style="max-width: 650px; width: 90%;">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3>Stored History for <span id="modal-stock-symbol" class="accent"></span></h3>
+                <button type="button" class="btn-icon close-modal"><i class="ph ph-x"></i></button>
+            </div>
+            <p class="text-sm text-secondary" style="margin-bottom: 1rem;">
+                Daily closing prices and volume records saved in Firebase Firestore (<span id="modal-stock-count">0</span> records).
+            </p>
+            <div class="table-container" style="max-height: 380px; overflow-y: auto;">
+                <table id="stock-history-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Closing Price</th>
+                            <th>Daily Volume</th>
+                        </tr>
+                    </thead>
+                    <tbody id="stock-history-table-body">
+                        <tr><td colspan="3" class="text-center">Loading history...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="modal-actions mt-2" style="justify-content: flex-end;">
+                <button type="button" class="secondary-btn close-modal">Close</button>
+            </div>
         </div>
     </div>
 

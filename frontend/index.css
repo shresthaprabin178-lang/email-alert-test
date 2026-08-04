@@ -670,3 +670,13 @@ input:focus, select:focus {
     color: var(--text-secondary);
     font-size: 0.85rem;
 }
+
+.badge-count {
+    background: rgba(37, 99, 235, 0.15);
+    color: var(--accent);
+    border: 1px solid rgba(37, 99, 235, 0.3);
+    font-weight: 600;
+    padding: 0.25rem 0.6rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+}
