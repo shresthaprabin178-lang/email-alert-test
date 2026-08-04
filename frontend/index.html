@@ -63,6 +63,9 @@
                 <li data-tab="52week">
                     <i class="ph ph-chart-line-up"></i> 52-Week H/L
                 </li>
+                <li data-tab="setup">
+                    <i class="ph ph-lightning"></i> Setup
+                </li>
             </ul>
 
             <div class="sidebar-bottom">
@@ -351,6 +354,49 @@
                             </thead>
                             <tbody id="hl-table-body">
                                 <tr><td colspan="7" class="text-center">Loading data...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Content: Setup (Swing Trading Screener) -->
+            <div id="tab-setup" class="tab-content">
+                <div class="glass-card fill-height">
+                    <div class="table-controls">
+                        <div>
+                            <h3>Swing Trading Setup Screener</h3>
+                            <p class="text-sm text-secondary" style="margin-top: 0.25rem;">
+                                Filter: <strong>20-SMA Trend</strong> (Price > 20D SMA) | <strong>14-RSI Momentum</strong> (45–65) | <strong>Volume Confirmation</strong> (&ge; 1.2x 20D Avg Vol)
+                            </p>
+                        </div>
+                        <div class="controls-right filters">
+                            <div class="search-box">
+                                <i class="ph ph-magnifying-glass"></i>
+                                <input type="text" id="setup-search-input" placeholder="Search Symbol...">
+                            </div>
+                            <select id="setup-signal-filter" class="auto-width">
+                                <option value="ALL">All Stocks</option>
+                                <option value="BUY">🟢 BUY Signals Only</option>
+                                <option value="NEUTRAL">⚪ Neutral Only</option>
+                            </select>
+                            <button id="refresh-setup-btn" class="secondary-btn"><i class="ph ph-arrows-clockwise"></i> Refresh</button>
+                        </div>
+                    </div>
+                    <div class="table-container" style="margin-top: 1rem;">
+                        <table id="setup-table">
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>Current Price</th>
+                                    <th>20-Day SMA</th>
+                                    <th>14-RSI</th>
+                                    <th>Volume vs 20D Avg</th>
+                                    <th>Signal Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="setup-table-body">
+                                <tr><td colspan="6" class="text-center">Loading technical setup analysis...</td></tr>
                             </tbody>
                         </table>
                     </div>

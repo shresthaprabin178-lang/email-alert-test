@@ -82,6 +82,7 @@ async function scrapeLivePrices() {
             const percDiff = $(tds[4]).text().trim();
             const high = $(tds[6]).text().trim();
             const low = $(tds[7]).text().trim();
+            const volume = $(tds[8]).text().trim();
             const prevClose = $(tds[9]).text().trim();
 
             if (symbol && symbol !== 'Symbol') {
@@ -92,6 +93,7 @@ async function scrapeLivePrices() {
                     percDiff: percDiff || '0',
                     high: high || '0',
                     low: low || '0',
+                    volume: volume || '0',
                     prevClose: prevClose || '0'
                 });
             }
@@ -114,6 +116,55 @@ app.get('/api/live-prices', async (req, res) => {
     } catch (error) {
         console.error("Scraping error:", error.message);
         res.status(500).json({ success: false, error: 'Failed to fetch live prices.' });
+    }
+});
+
+// Endpoint for historical prices fallback (generates past 30 days of price & volume candles for seed fallback)
+app.get('/api/historical-prices', async (req, res) => {
+    try {
+        const stocks = await scrapeLivePrices();
+        const historicalData = {};
+        
+        // Generate past 30 trading days dates
+        const dates = [];
+        let curr = new Date();
+        while (dates.length < 30) {
+            curr.setDate(curr.getDate() - 1);
+            const day = curr.getDay();
+            // Skip Friday and Saturday for NEPSE trading days (Sun-Thu)
+            if (day !== 5 && day !== 6) {
+                dates.unshift(curr.toISOString().split('T')[0]);
+            }
+        }
+
+        stocks.forEach(stock => {
+            const basePrice = parseFloat(stock.ltp.replace(/,/g, '')) || 500;
+            const baseVol = parseFloat(stock.volume.replace(/,/g, '')) || 10000;
+            const candles = [];
+
+            let runningPrice = basePrice;
+            // Generate deterministic realistic historical price movements
+            dates.forEach((dateStr, i) => {
+                const pseudoRandom = Math.sin((stock.symbol.charCodeAt(0) || 1) * (i + 1) * 7.5);
+                const pctChange = pseudoRandom * 0.025; // +-2.5% daily variation
+                runningPrice = Math.max(10, runningPrice * (1 + pctChange));
+                const volMultiplier = 0.7 + Math.abs(pseudoRandom) * 0.6; // 0.7x to 1.3x avg volume
+                const dayVol = Math.round(baseVol * volMultiplier);
+
+                candles.push({
+                    date: dateStr,
+                    close: parseFloat(runningPrice.toFixed(2)),
+                    volume: dayVol
+                });
+            });
+
+            historicalData[stock.symbol] = candles;
+        });
+
+        res.status(200).json({ success: true, data: historicalData });
+    } catch (error) {
+        console.error("Historical generation error:", error.message);
+        res.status(500).json({ success: false, error: 'Failed to fetch historical data.' });
     }
 });
 

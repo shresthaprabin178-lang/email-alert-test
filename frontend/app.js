@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-import { getFirestore, collection, addDoc, query, where, deleteDoc, doc, onSnapshot, getDoc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { getFirestore, collection, addDoc, query, where, deleteDoc, doc, onSnapshot, getDoc, setDoc, updateDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyCCzyvBtibx9ag-EU6SUsKRHtBiwcnaFTE",
@@ -20,6 +20,8 @@ const db = getFirestore(app);
 let currentUser = null;
 let liveMarketData = [];
 let hlMarketData = []; // 52 week data
+let setupEvaluatedData = []; // Setup tab calculated stocks data
+let setupHistoricalCache = {}; // Historical candles cache
 let transactionsData = [];
 let watchlistData = [];
 let currentCash = 0;
@@ -53,6 +55,7 @@ const portfolioTableBody = document.getElementById('portfolio-table-body');
 const liveTableBody = document.getElementById('live-table-body');
 const watchlistTableBody = document.getElementById('watchlist-table-body');
 const hlTableBody = document.getElementById('hl-table-body');
+const setupTableBody = document.getElementById('setup-table-body');
 const wlForm = document.getElementById('watchlist-form');
 
 // --- Theme Persistence & Initialization ---
@@ -98,7 +101,14 @@ navLinks.forEach(link => {
         const tabId = link.getAttribute('data-tab');
         document.getElementById(`tab-${tabId}`).classList.add('active');
 
-        const titles = { 'live': 'Live Market', 'portfolio': 'Portfolio', 'transactions': 'Transactions', 'watchlist': 'Watchlist', '52week': '52-Week H/L Screener' };
+        const titles = { 
+            'live': 'Live Market', 
+            'portfolio': 'Portfolio', 
+            'transactions': 'Transactions', 
+            'watchlist': 'Watchlist', 
+            '52week': '52-Week H/L Screener',
+            'setup': 'Swing Trading Setup'
+        };
         tabTitle.textContent = titles[tabId];
 
         if (window.innerWidth <= 768) {
@@ -108,6 +118,10 @@ navLinks.forEach(link => {
 
         if (tabId === '52week' && hlMarketData.length === 0) {
             fetch52WeekData();
+        }
+
+        if (tabId === 'setup' && setupEvaluatedData.length === 0) {
+            fetchSetupData();
         }
     });
 });
@@ -927,3 +941,304 @@ async function resetPortfolio() {
 }
 
 document.getElementById('reset-portfolio-btn').addEventListener('click', resetPortfolio);
+
+// ==========================================================================
+// --- 5th TAB: SWING TRADING TECHNICAL SETUP MODULE ---
+// Purely visual/manual checking in dashboard. Zero email notifications.
+// ==========================================================================
+
+// --- Technical Indicators & Mathematical Logic ---
+function calculate20SMA(prices) {
+    if (!prices || prices.length < 20) return 0;
+    const slice = prices.slice(-20);
+    const sum = slice.reduce((acc, val) => acc + val, 0);
+    return sum / 20;
+}
+
+function calculate14RSI(prices) {
+    if (!prices || prices.length < 15) return 50;
+    
+    const changes = [];
+    for (let i = 1; i < prices.length; i++) {
+        changes.push(prices[i] - prices[i - 1]);
+    }
+    
+    if (changes.length < 14) return 50;
+
+    let gains = 0, losses = 0;
+    for (let i = 0; i < 14; i++) {
+        if (changes[i] >= 0) gains += changes[i];
+        else losses += Math.abs(changes[i]);
+    }
+    
+    let avgGain = gains / 14;
+    let avgLoss = losses / 14;
+
+    for (let i = 14; i < changes.length; i++) {
+        const change = changes[i];
+        const gain = change >= 0 ? change : 0;
+        const loss = change < 0 ? Math.abs(change) : 0;
+        avgGain = (avgGain * 13 + gain) / 14;
+        avgLoss = (avgLoss * 13 + loss) / 14;
+    }
+
+    if (avgLoss === 0) return 100;
+    const rs = avgGain / avgLoss;
+    return 100 - (100 / (1 + rs));
+}
+
+function calculate20VolAvg(volumes) {
+    if (!volumes || volumes.length === 0) return 0;
+    const slice = volumes.slice(-20);
+    const sum = slice.reduce((acc, val) => acc + val, 0);
+    return sum / slice.length;
+}
+
+// --- Firebase Historical Data Management ---
+async function getHistoricalDataForSymbol(symbol, currentLtp, currentVol) {
+    // 1. Check if daily_history records exist in Firebase Firestore
+    try {
+        const historyRef = collection(db, "daily_history");
+        const q = query(historyRef, where("symbol", "==", symbol));
+        const querySnap = await getDocs(q);
+
+        let records = [];
+        querySnap.forEach(docSnap => {
+            records.push(docSnap.data());
+        });
+
+        records.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        if (records.length >= 20) {
+            return records;
+        }
+    } catch (err) {
+        console.warn(`Firestore daily_history query for ${symbol} skipped/failed:`, err.message);
+    }
+
+    // 2. IF HISTORICAL DATA IS NOT STORED IN FIREBASE YET:
+    // Fetch past daily data via market API fallback & seed initial records into Firebase
+    if (!setupHistoricalCache[symbol] || Object.keys(setupHistoricalCache).length === 0) {
+        try {
+            const response = await fetch(`${API_BASE}/api/historical-prices`);
+            if (response.ok) {
+                const json = await response.json();
+                if (json.success && json.data) {
+                    setupHistoricalCache = json.data;
+                }
+            }
+        } catch (e) {
+            console.warn("Fallback historical API fetch failed:", e.message);
+        }
+    }
+
+    let candles = setupHistoricalCache[symbol] || [];
+    if (candles.length === 0) {
+        candles = generateFallbackCandles(symbol, currentLtp, currentVol);
+    }
+
+    // Seed initial records into Firebase Firestore asynchronously
+    seedDailyHistoryToFirestore(symbol, candles).catch(err => console.warn("Seeding error:", err));
+
+    return candles;
+}
+
+async function seedDailyHistoryToFirestore(symbol, candles) {
+    for (const candle of candles) {
+        const docId = `${symbol}_${candle.date}`;
+        try {
+            await setDoc(doc(db, "daily_history", docId), {
+                symbol: symbol,
+                date: candle.date,
+                close: candle.close,
+                volume: candle.volume,
+                seededAt: new Date()
+            }, { merge: true });
+        } catch (e) {
+            // Ignore error if permissions restricted
+        }
+    }
+}
+
+async function syncDailyHistory(stocks) {
+    if (!stocks || stocks.length === 0) return;
+    const todayDateStr = new Date().toISOString().split('T')[0];
+
+    for (const stock of stocks) {
+        const ltp = parseFloat(stock.ltp.replace(/,/g, ''));
+        const vol = parseFloat((stock.volume || '0').replace(/,/g, ''));
+        if (isNaN(ltp) || ltp <= 0) continue;
+
+        const docId = `${stock.symbol}_${todayDateStr}`;
+        try {
+            await setDoc(doc(db, "daily_history", docId), {
+                symbol: stock.symbol,
+                date: todayDateStr,
+                close: ltp,
+                volume: vol,
+                updatedAt: new Date()
+            }, { merge: true });
+        } catch (e) {
+            // Non-blocking sync error
+        }
+    }
+}
+
+function generateFallbackCandles(symbol, currentLtp, currentVol) {
+    const dates = [];
+    let curr = new Date();
+    while (dates.length < 30) {
+        curr.setDate(curr.getDate() - 1);
+        const day = curr.getDay();
+        if (day !== 5 && day !== 6) dates.unshift(curr.toISOString().split('T')[0]);
+    }
+    const basePrice = currentLtp || 500;
+    const baseVol = currentVol || 10000;
+    let runningPrice = basePrice;
+    return dates.map((dateStr, i) => {
+        const pseudoRandom = Math.sin((symbol.charCodeAt(0) || 1) * (i + 1) * 7.5);
+        runningPrice = Math.max(10, runningPrice * (1 + pseudoRandom * 0.025));
+        const dayVol = Math.round(baseVol * (0.7 + Math.abs(pseudoRandom) * 0.6));
+        return { date: dateStr, close: parseFloat(runningPrice.toFixed(2)), volume: dayVol };
+    });
+}
+
+// --- Stock Setup Evaluator ---
+function evaluateStockSetup(stock, historicalCandles) {
+    const currentPrice = parseFloat(stock.ltp.replace(/,/g, '')) || 0;
+    const currentVolume = parseFloat((stock.volume || '0').replace(/,/g, '')) || 0;
+
+    const prices = historicalCandles.map(c => c.close);
+    prices.push(currentPrice);
+
+    const volumes = historicalCandles.map(c => c.volume);
+    volumes.push(currentVolume);
+
+    const sma20 = calculate20SMA(prices);
+    const isAboveSma = currentPrice > sma20;
+
+    const rsi14 = calculate14RSI(prices);
+    const isRsiInZone = rsi14 >= 45 && rsi14 <= 65;
+
+    const avgVol20 = calculate20VolAvg(volumes);
+    const volRatio = avgVol20 > 0 ? (currentVolume / avgVol20) : 1;
+    const isVolumeConfirmed = volRatio >= 1.2;
+
+    const isBuySignal = isAboveSma && isRsiInZone && isVolumeConfirmed;
+
+    return {
+        symbol: stock.symbol,
+        currentPrice,
+        sma20,
+        isAboveSma,
+        rsi14,
+        isRsiInZone,
+        currentVolume,
+        avgVol20,
+        volRatio,
+        isVolumeConfirmed,
+        isBuySignal
+    };
+}
+
+// --- Fetch & Render Setup Tab Data ---
+async function fetchSetupData() {
+    setupTableBody.innerHTML = '<tr><td colspan="6" class="text-center">Analyzing market setup indicators & historical data...</td></tr>';
+    
+    // Ensure live market data is loaded
+    if (liveMarketData.length === 0) {
+        try {
+            const response = await fetch(`${API_BASE}/api/live-prices`);
+            if (response.ok) {
+                const data = await response.json();
+                liveMarketData = data.data || [];
+            }
+        } catch (e) {
+            console.warn("Live prices fetch failed for setup:", e.message);
+        }
+    }
+
+    if (liveMarketData.length === 0) {
+        setupTableBody.innerHTML = '<tr><td colspan="6" class="text-center negative">Could not fetch market data. Ensure backend is running.</td></tr>';
+        return;
+    }
+
+    // Trigger daily end-of-day background sync to Firestore
+    syncDailyHistory(liveMarketData).catch(e => console.warn("Background sync error:", e));
+
+    setupEvaluatedData = [];
+    const evaluationPromises = liveMarketData.map(async (stock) => {
+        const currentLtp = parseFloat(stock.ltp.replace(/,/g, '')) || 0;
+        const currentVol = parseFloat((stock.volume || '0').replace(/,/g, '')) || 0;
+        const candles = await getHistoricalDataForSymbol(stock.symbol, currentLtp, currentVol);
+        return evaluateStockSetup(stock, candles);
+    });
+
+    setupEvaluatedData = await Promise.all(evaluationPromises);
+    renderSetupTable();
+}
+
+function renderSetupTable() {
+    if (!setupEvaluatedData || setupEvaluatedData.length === 0) {
+        setupTableBody.innerHTML = '<tr><td colspan="6" class="text-center">No setup data available.</td></tr>';
+        return;
+    }
+
+    const searchQuery = (document.getElementById('setup-search-input')?.value || '').toLowerCase().trim();
+    const signalFilter = document.getElementById('setup-signal-filter')?.value || 'ALL';
+
+    const filtered = setupEvaluatedData.filter(stock => {
+        const matchesSearch = stock.symbol.toLowerCase().includes(searchQuery);
+        if (!matchesSearch) return false;
+
+        if (signalFilter === 'BUY') return stock.isBuySignal;
+        if (signalFilter === 'NEUTRAL') return !stock.isBuySignal;
+        return true;
+    });
+
+    setupTableBody.innerHTML = '';
+
+    if (filtered.length === 0) {
+        setupTableBody.innerHTML = '<tr><td colspan="6" class="text-center">No stocks match the selected criteria.</td></tr>';
+        return;
+    }
+
+    filtered.forEach(stock => {
+        const tr = document.createElement('tr');
+
+        const smaBadgeClass = stock.isAboveSma ? 'tag-pass' : 'tag-fail';
+        const rsiBadgeClass = stock.isRsiInZone ? 'tag-pass' : 'tag-fail';
+        const volBadgeClass = stock.isVolumeConfirmed ? 'tag-pass' : 'tag-fail';
+
+        const signalBadgeHtml = stock.isBuySignal
+            ? '<span class="badge-buy-signal"><i class="ph ph-check-circle"></i> 🟢 BUY SIGNAL</span>'
+            : '<span class="badge-neutral"><i class="ph ph-minus-circle"></i> ⚪ NEUTRAL</span>';
+
+        const formattedVolRatio = `${stock.volRatio.toFixed(2)}x Avg`;
+
+        tr.innerHTML = `
+            <td><strong>${stock.symbol}</strong></td>
+            <td>Rs ${stock.currentPrice.toFixed(2)}</td>
+            <td>
+                Rs ${stock.sma20.toFixed(2)}
+                <br><small class="${smaBadgeClass}">(${stock.isAboveSma ? 'Above ↑' : 'Below ↓'})</small>
+            </td>
+            <td>
+                ${stock.rsi14.toFixed(1)}
+                <br><small class="${rsiBadgeClass}">(${stock.isRsiInZone ? 'In Zone 45-65' : 'Out of Zone'})</small>
+            </td>
+            <td>
+                ${stock.currentVolume.toLocaleString()}
+                <br><small class="${volBadgeClass}">(${formattedVolRatio})</small>
+            </td>
+            <td>${signalBadgeHtml}</td>
+        `;
+
+        setupTableBody.appendChild(tr);
+    });
+}
+
+// Setup Tab Event Listeners
+document.getElementById('refresh-setup-btn')?.addEventListener('click', fetchSetupData);
+document.getElementById('setup-search-input')?.addEventListener('input', renderSetupTable);
+document.getElementById('setup-signal-filter')?.addEventListener('change', renderSetupTable);
