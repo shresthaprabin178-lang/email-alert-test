@@ -479,7 +479,9 @@ txForm.addEventListener('submit', async (e) => {
 // --- Portfolio Computation ---
 function computeHoldings() {
     const holdings = {};
-    transactionsData.forEach(tx => {
+    // transactionsData is sorted newest-first for display; holdings must be computed oldest-first
+    const chronological = [...transactionsData].reverse();
+    chronological.forEach(tx => {
         if (!holdings[tx.symbol]) holdings[tx.symbol] = { qty: 0, invested: 0, bonusCost: 0, wacc: 0, targetPrice: null, stopLoss: null };
 
         if (tx.type === 'BUY' || tx.type === 'BONUS') {
