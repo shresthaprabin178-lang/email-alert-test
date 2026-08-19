@@ -28,6 +28,10 @@ let watchlistData = [];
 let currentCash = 0;
 let totalDeposited = 0;
 
+// Tracks which watchlist alerts have been shown this browser session
+// to avoid repeat pop-ups on every re-render
+const wlAlertsShownThisSession = new Set();
+
 const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') 
     ? 'http://localhost:5000' 
     : 'https://email-alert-backend-z097.onrender.com';
@@ -729,45 +733,206 @@ editForm.addEventListener('submit', async (e) => {
 });
 
 // --- Watchlist ---
+
+// In-browser toast notification helper
+function showToast(title, message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    const colors = {
+        success: { bg: 'rgba(34,197,94,0.15)', border: '#22c55e', icon: '🎯' },
+        danger:  { bg: 'rgba(239,68,68,0.15)',  border: '#ef4444', icon: '⚠️' },
+        info:    { bg: 'rgba(99,102,241,0.15)', border: '#6366f1', icon: 'ℹ️' }
+    };
+    const { bg, border, icon } = colors[type] || colors.info;
+
+    toast.style.cssText = `
+        background: ${bg};
+        border: 1px solid ${border};
+        border-radius: 12px;
+        padding: 1rem 1.25rem;
+        max-width: 340px;
+        backdrop-filter: blur(12px);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        pointer-events: all;
+        animation: toastSlideIn 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards;
+        cursor: pointer;
+        transition: opacity 0.3s ease;
+    `;
+    toast.innerHTML = `
+        <div style="display:flex;align-items:flex-start;gap:0.75rem;">
+            <span style="font-size:1.4rem;line-height:1;">${icon}</span>
+            <div style="flex:1;min-width:0;">
+                <div style="font-weight:600;font-size:0.9rem;color:var(--text-primary);margin-bottom:0.25rem;">${title}</div>
+                <div style="font-size:0.8rem;color:var(--text-secondary);line-height:1.4;">${message}</div>
+            </div>
+            <button onclick="this.closest('[data-toast]').remove()" style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:1rem;line-height:1;padding:0;">✕</button>
+        </div>
+    `;
+    toast.setAttribute('data-toast', '1');
+    toast.addEventListener('click', () => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+    });
+
+    // Inject keyframe if not already present
+    if (!document.getElementById('toast-keyframe')) {
+        const style = document.createElement('style');
+        style.id = 'toast-keyframe';
+        style.textContent = `
+            @keyframes toastSlideIn {
+                from { opacity:0; transform: translateX(40px) scale(0.9); }
+                to   { opacity:1; transform: translateX(0)   scale(1); }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    container.appendChild(toast);
+    // Auto-dismiss after 8 seconds
+    setTimeout(() => {
+        if (toast.parentNode) {
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 300);
+        }
+    }, 8000);
+}
+
+// Send watchlist alert via backend email (non-blocking)
+function sendWatchlistEmailAlert(email, subject, message) {
+    fetch(`${API_BASE}/api/send-alert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, subject, message })
+    }).catch(err => console.warn('Watchlist email alert failed:', err.message));
+}
+
 function listenToWatchlist() {
     if (!currentUser) return;
     const q = query(collection(db, "watchlist"), where("uid", "==", currentUser.uid));
     
     onSnapshot(q, (snapshot) => {
         watchlistData = [];
-        watchlistTableBody.innerHTML = '';
+        snapshot.forEach(docSnap => watchlistData.push({ id: docSnap.id, ...docSnap.data() }));
+        renderWatchlist();
+    });
+}
+
+function renderWatchlist() {
+    watchlistTableBody.innerHTML = '';
+
+    if (watchlistData.length === 0) {
+        watchlistTableBody.innerHTML = '<tr><td colspan="9" class="text-center">Watchlist is empty.</td></tr>';
+        return;
+    }
+
+    watchlistData.forEach(data => {
+        let ltp = 0;
+        const liveStock = liveMarketData.find(s => s.symbol === data.symbol);
+        if (liveStock) ltp = parseFloat(liveStock.ltp.replace(/,/g, ''));
         
-        if (snapshot.empty) {
-            watchlistTableBody.innerHTML = '<tr><td colspan="5" class="text-center">Watchlist is empty.</td></tr>';
-            return;
+        // --- Buy alert: LTP <= targetBuy ---
+        const isBuyHit  = ltp > 0 && ltp <= data.targetBuy;
+
+        // --- Take Profit alert: LTP >= takeProfit (if set) ---
+        const hasTp      = data.takeProfit && data.takeProfit > 0;
+        const isTpHit    = hasTp && ltp > 0 && ltp >= data.takeProfit;
+
+        // --- Stop Loss alert: LTP <= stopLoss (if set) ---
+        const hasSl      = data.stopLoss && data.stopLoss > 0;
+        const isSlHit    = hasSl && ltp > 0 && ltp <= data.stopLoss;
+
+        // --- Fire in-browser toast + email for fresh hits (once per session) ---
+        const sessionKeyBuy = `${data.id}_buy`;
+        const sessionKeyTp  = `${data.id}_tp`;
+        const sessionKeySl  = `${data.id}_sl`;
+
+        if (isBuyHit && !data.alertTriggered && !wlAlertsShownThisSession.has(sessionKeyBuy)) {
+            wlAlertsShownThisSession.add(sessionKeyBuy);
+            showToast(
+                `🛒 Buy Alert: ${data.symbol}`,
+                `LTP Rs ${ltp} has reached your target buy price of Rs ${data.targetBuy}. Time to buy!`,
+                'success'
+            );
+            sendWatchlistEmailAlert(
+                currentUser.email,
+                `📊 Watchlist Alert: ${data.symbol} - Target Buy Hit`,
+                `🛒 TARGET BUY HIT!\n\nStock: ${data.symbol}\nCurrent Price: Rs ${ltp}\nYour Target Buy: Rs ${data.targetBuy}\n\nLog in to act on this alert.`
+            );
         }
 
-        snapshot.forEach(doc => watchlistData.push({ id: doc.id, ...doc.data() }));
+        if (isTpHit && !data.tpAlertTriggered && !wlAlertsShownThisSession.has(sessionKeyTp)) {
+            wlAlertsShownThisSession.add(sessionKeyTp);
+            showToast(
+                `🎯 Take Profit: ${data.symbol}`,
+                `LTP Rs ${ltp} has hit your take profit target of Rs ${data.takeProfit}. Consider selling!`,
+                'success'
+            );
+            sendWatchlistEmailAlert(
+                currentUser.email,
+                `📊 Watchlist Alert: ${data.symbol} - Take Profit Hit`,
+                `🎯 TAKE PROFIT HIT!\n\nStock: ${data.symbol}\nCurrent Price: Rs ${ltp}\nYour Take Profit: Rs ${data.takeProfit}\n\nLog in to act on this alert.`
+            );
+        }
 
-        watchlistData.forEach(data => {
-            let ltp = 0;
-            const liveStock = liveMarketData.find(s => s.symbol === data.symbol);
-            if (liveStock) ltp = parseFloat(liveStock.ltp.replace(/,/g, ''));
-            
-            const isTriggered = ltp > 0 && ltp <= data.targetBuy;
-            
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td><strong>${data.symbol}</strong></td>
-                <td>Rs ${ltp || 'N/A'}</td>
-                <td>Rs ${data.targetBuy}</td>
-                <td>${data.alertTriggered ? '<span class="badge positive">Triggered</span>' : (isTriggered ? '<span class="badge positive">Hit!</span>' : '<span class="badge">Waiting</span>')}</td>
-                <td>
-                    <button class="btn-icon delete-wl-btn text-negative" data-id="${data.id}"><i class="ph ph-trash"></i></button>
-                </td>
-            `;
-            watchlistTableBody.appendChild(tr);
-        });
+        if (isSlHit && !data.slAlertTriggered && !wlAlertsShownThisSession.has(sessionKeySl)) {
+            wlAlertsShownThisSession.add(sessionKeySl);
+            showToast(
+                `⚠️ Stop Loss Hit: ${data.symbol}`,
+                `LTP Rs ${ltp} has breached your stop loss of Rs ${data.stopLoss}. Consider cutting losses!`,
+                'danger'
+            );
+            sendWatchlistEmailAlert(
+                currentUser.email,
+                `📊 Watchlist Alert: ${data.symbol} - Stop Loss Hit`,
+                `⚠️ STOP LOSS HIT!\n\nStock: ${data.symbol}\nCurrent Price: Rs ${ltp}\nYour Stop Loss: Rs ${data.stopLoss}\n\nLog in to manage your risk.`
+            );
+        }
 
-        document.querySelectorAll('.delete-wl-btn').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                await deleteDoc(doc(db, "watchlist", e.currentTarget.getAttribute('data-id')));
-            });
+        // --- Badge helpers ---
+        const buyBadge = data.alertTriggered
+            ? '<span class="badge positive">Triggered</span>'
+            : isBuyHit
+                ? '<span class="badge positive">Hit!</span>'
+                : '<span class="badge">Waiting</span>';
+
+        const tpBadge = !hasTp
+            ? '<span class="text-sm" style="color:var(--text-secondary)">—</span>'
+            : data.tpAlertTriggered
+                ? '<span class="badge positive">Triggered ✓</span>'
+                : isTpHit
+                    ? '<span class="badge positive">Hit! 🎯</span>'
+                    : '<span class="badge">Waiting</span>';
+
+        const slBadge = !hasSl
+            ? '<span class="text-sm" style="color:var(--text-secondary)">—</span>'
+            : data.slAlertTriggered
+                ? '<span class="badge negative">Triggered ⚠️</span>'
+                : isSlHit
+                    ? '<span class="badge negative">Hit! ⚠️</span>'
+                    : '<span class="badge">Waiting</span>';
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><strong>${data.symbol}</strong></td>
+            <td>Rs ${ltp || 'N/A'}</td>
+            <td>Rs ${data.targetBuy}</td>
+            <td>${hasTp ? `<span class="positive">Rs ${parseFloat(data.takeProfit).toFixed(2)}</span>` : '<span class="text-sm">—</span>'}</td>
+            <td>${hasSl ? `<span class="negative">Rs ${parseFloat(data.stopLoss).toFixed(2)}</span>` : '<span class="text-sm">—</span>'}</td>
+            <td>${buyBadge}</td>
+            <td>${tpBadge}</td>
+            <td>${slBadge}</td>
+            <td>
+                <button class="btn-icon delete-wl-btn text-negative" data-id="${data.id}"><i class="ph ph-trash"></i></button>
+            </td>
+        `;
+        watchlistTableBody.appendChild(tr);
+    });
+
+    document.querySelectorAll('.delete-wl-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            await deleteDoc(doc(db, "watchlist", e.currentTarget.getAttribute('data-id')));
         });
     });
 }
@@ -776,8 +941,10 @@ wlForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!currentUser) return;
     
-    const symbol = document.getElementById('wl-symbol').value.toUpperCase();
-    const target = parseFloat(document.getElementById('wl-target').value);
+    const symbol     = document.getElementById('wl-symbol').value.toUpperCase();
+    const target     = parseFloat(document.getElementById('wl-target').value);
+    const takeProfit = parseFloat(document.getElementById('wl-take-profit').value) || null;
+    const stopLoss   = parseFloat(document.getElementById('wl-stop-loss').value) || null;
     
     try {
         await addDoc(collection(db, "watchlist"), {
@@ -785,7 +952,11 @@ wlForm.addEventListener('submit', async (e) => {
             email: currentUser.email,
             symbol: symbol,
             targetBuy: target,
-            alertTriggered: false
+            takeProfit: takeProfit,
+            stopLoss: stopLoss,
+            alertTriggered: false,
+            tpAlertTriggered: false,
+            slAlertTriggered: false
         });
         wlForm.reset();
     } catch (err) { alert("Failed to add to watchlist."); }
@@ -807,8 +978,8 @@ async function fetchLivePrices() {
         renderLiveTable();
         updatePortfolio();
         
-        // Trigger watchlist re-render to update LTPs
-        if (watchlistData.length > 0) listenToWatchlist(); 
+        // Trigger watchlist re-render to update LTPs (don't re-attach listener, just re-render)
+        if (watchlistData.length > 0) renderWatchlist();
 
         sysStatus.textContent = 'System Online';
     } catch (err) {

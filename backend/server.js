@@ -271,6 +271,8 @@ app.post('/api/send-alert', async (req, res) => {
 // BACKGROUND ALERT CHECKER (runs every 5 minutes)
 // This runs automatically even when you are not using the app.
 // As long as this server is alive on Render, it will keep checking.
+// Checks BOTH the 'transactions' collection (portfolio alerts) AND
+// the 'watchlist' collection (takeProfit / stopLoss alerts).
 // =========================================================
 async function checkAlerts() {
     console.log(`[${new Date().toISOString()}] 🔄 Background alert checker running...`);
@@ -288,24 +290,19 @@ async function checkAlerts() {
 
         console.log(`   Scraped ${Object.keys(priceMap).length} stock prices.`);
 
-        // 2. Get all transactions that have active (untriggered) alerts
-        const snapshot = await db.collection('transactions')
+        // ---------------------------------------------------------------
+        // PART A: Portfolio / Transaction alerts (target price + stop loss)
+        // ---------------------------------------------------------------
+        const txSnapshot = await db.collection('transactions')
             .where('alertTriggered', '==', false)
             .get();
 
-        if (snapshot.empty) {
-            console.log('   No pending alerts to check.');
-            return;
-        }
+        console.log(`   Found ${txSnapshot.size} active portfolio alert(s) to check.`);
 
-        console.log(`   Found ${snapshot.size} active alert(s) to check.`);
-
-        // 3. Compare each transaction's target/stopLoss against live price
-        for (const doc of snapshot.docs) {
-            const tx = doc.data();
+        for (const docSnap of txSnapshot.docs) {
+            const tx = docSnap.data();
             const ltp = priceMap[tx.symbol];
-
-            if (!ltp) continue; // Stock not found in today's data
+            if (!ltp) continue;
 
             let alertMsg = null;
             let alertSubject = null;
@@ -320,22 +317,75 @@ async function checkAlerts() {
 
             if (alertMsg) {
                 try {
-                    // Send Email Alert
                     await sendEmail(tx.email, alertSubject, alertMsg);
-
-                    // Mark as triggered so we don't send again
-                    await db.collection('transactions').doc(doc.id).update({
-                        alertTriggered: true
-                    });
-
-                    console.log(`   ✅ Alert sent for ${tx.symbol} to ${tx.email}`);
+                    await db.collection('transactions').doc(docSnap.id).update({ alertTriggered: true });
+                    console.log(`   ✅ Portfolio alert sent for ${tx.symbol} to ${tx.email}`);
                 } catch (emailErr) {
-                    console.error(`   ❌ Failed to send alert for ${tx.symbol}:`, emailErr.message);
-                    // Don't crash the whole loop — try next alert
+                    console.error(`   ❌ Failed to send portfolio alert for ${tx.symbol}:`, emailErr.message);
                 }
             }
         }
 
+        // ---------------------------------------------------------------
+        // PART B: Watchlist alerts (takeProfit + stopLoss on watched stocks)
+        // ---------------------------------------------------------------
+        // Fetch watchlist items where at least one alert is still pending
+        const wlSnapshot = await db.collection('watchlist').get();
+
+        let wlChecked = 0;
+        for (const docSnap of wlSnapshot.docs) {
+            const wl = docSnap.data();
+            const ltp = priceMap[wl.symbol];
+            if (!ltp) continue;
+
+            const updates = {};
+
+            // --- Take Profit alert ---
+            if (wl.takeProfit && wl.takeProfit > 0 && !wl.tpAlertTriggered && ltp >= wl.takeProfit) {
+                const subject = `📊 Watchlist Alert: ${wl.symbol} - Take Profit Hit`;
+                const msg = `🎯 TAKE PROFIT HIT!\n\nStock: ${wl.symbol}\nCurrent Price: Rs ${ltp}\nYour Take Profit: Rs ${wl.takeProfit}\n\nLog in to act on this alert.`;
+                try {
+                    await sendEmail(wl.email, subject, msg);
+                    updates.tpAlertTriggered = true;
+                    console.log(`   ✅ Watchlist TP alert sent for ${wl.symbol} to ${wl.email}`);
+                } catch (emailErr) {
+                    console.error(`   ❌ Failed to send watchlist TP alert for ${wl.symbol}:`, emailErr.message);
+                }
+            }
+
+            // --- Stop Loss alert ---
+            if (wl.stopLoss && wl.stopLoss > 0 && !wl.slAlertTriggered && ltp <= wl.stopLoss) {
+                const subject = `📊 Watchlist Alert: ${wl.symbol} - Stop Loss Hit`;
+                const msg = `⚠️ STOP LOSS HIT!\n\nStock: ${wl.symbol}\nCurrent Price: Rs ${ltp}\nYour Stop Loss: Rs ${wl.stopLoss}\n\nLog in to manage your risk.`;
+                try {
+                    await sendEmail(wl.email, subject, msg);
+                    updates.slAlertTriggered = true;
+                    console.log(`   ✅ Watchlist SL alert sent for ${wl.symbol} to ${wl.email}`);
+                } catch (emailErr) {
+                    console.error(`   ❌ Failed to send watchlist SL alert for ${wl.symbol}:`, emailErr.message);
+                }
+            }
+
+            // --- Target Buy alert (LTP <= targetBuy) ---
+            if (wl.targetBuy && wl.targetBuy > 0 && !wl.alertTriggered && ltp <= wl.targetBuy) {
+                const subject = `📊 Watchlist Alert: ${wl.symbol} - Target Buy Hit`;
+                const msg = `🛒 TARGET BUY HIT!\n\nStock: ${wl.symbol}\nCurrent Price: Rs ${ltp}\nYour Target Buy: Rs ${wl.targetBuy}\n\nLog in to act on this alert.`;
+                try {
+                    await sendEmail(wl.email, subject, msg);
+                    updates.alertTriggered = true;
+                    console.log(`   ✅ Watchlist Buy alert sent for ${wl.symbol} to ${wl.email}`);
+                } catch (emailErr) {
+                    console.error(`   ❌ Failed to send watchlist Buy alert for ${wl.symbol}:`, emailErr.message);
+                }
+            }
+
+            if (Object.keys(updates).length > 0) {
+                await db.collection('watchlist').doc(docSnap.id).update(updates);
+            }
+            wlChecked++;
+        }
+
+        console.log(`   Checked ${wlChecked} watchlist item(s).`);
         console.log(`[${new Date().toISOString()}] ✅ Alert check complete.`);
     } catch (error) {
         console.error(`[${new Date().toISOString()}] ❌ Alert checker error:`, error.message);
