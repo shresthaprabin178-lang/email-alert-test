@@ -607,6 +607,54 @@
         </div>
     </div>
 
+    <!-- Mobile Bottom Navigation Bar -->
+    <nav class="mobile-bottom-nav">
+        <div class="bottom-nav-item" data-tab="live">
+            <i class="ph ph-trend-up"></i>
+            <span>Live</span>
+        </div>
+        <div class="bottom-nav-item active" data-tab="portfolio">
+            <i class="ph ph-briefcase"></i>
+            <span>Portfolio</span>
+        </div>
+        <div class="bottom-nav-item" data-tab="transactions">
+            <i class="ph ph-arrows-left-right"></i>
+            <span>Txns</span>
+        </div>
+        <div class="bottom-nav-item" data-tab="watchlist">
+            <i class="ph ph-eye"></i>
+            <span>Watchlist</span>
+        </div>
+        <div class="bottom-nav-item" id="mobile-more-nav-btn">
+            <i class="ph ph-dots-three-circle"></i>
+            <span>More</span>
+        </div>
+    </nav>
+
+    <!-- Mobile More Tabs Modal Sheet -->
+    <div id="mobile-more-modal" class="modal-overlay">
+        <div class="modal glass-card mobile-more-card">
+            <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                <h3>More Features</h3>
+                <button type="button" class="btn-icon close-modal"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="mobile-more-grid">
+                <div class="more-nav-card" data-tab="52week">
+                    <i class="ph ph-chart-line-up"></i>
+                    <span>52-Week H/L</span>
+                </div>
+                <div class="more-nav-card" data-tab="setup">
+                    <i class="ph ph-lightning"></i>
+                    <span>Trading Setup</span>
+                </div>
+                <div class="more-nav-card" data-tab="stocks">
+                    <i class="ph ph-database"></i>
+                    <span>Stocks DB</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast Notification Container -->
     <div id="toast-container" style="
         position: fixed;

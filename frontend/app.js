@@ -99,44 +99,80 @@ sidebarOverlay.addEventListener('click', () => {
 });
 
 // --- Tab Navigation ---
+const bottomNavItems = document.querySelectorAll('.bottom-nav-item[data-tab]');
+const moreNavCards = document.querySelectorAll('.more-nav-card[data-tab]');
+const mobileMoreModal = document.getElementById('mobile-more-modal');
+const mobileMoreBtn = document.getElementById('mobile-more-nav-btn');
+
+function switchTab(tabId) {
+    navLinks.forEach(l => l.classList.remove('active'));
+    bottomNavItems.forEach(b => b.classList.remove('active'));
+    tabContents.forEach(t => t.classList.remove('active'));
+
+    // Highlight active link in sidebar
+    const activeSidebarLink = document.querySelector(`.nav-links li[data-tab="${tabId}"]`);
+    if (activeSidebarLink) activeSidebarLink.classList.add('active');
+
+    // Highlight active link in bottom nav (if exists)
+    const activeBottomNav = document.querySelector(`.bottom-nav-item[data-tab="${tabId}"]`);
+    if (activeBottomNav) {
+        activeBottomNav.classList.add('active');
+    } else if (mobileMoreBtn) {
+        // If tab is in 'More' modal, highlight 'More' button
+        mobileMoreBtn.classList.add('active');
+    }
+
+    // Show content
+    const targetContent = document.getElementById(`tab-${tabId}`);
+    if (targetContent) targetContent.classList.add('active');
+
+    const titles = { 
+        'live': 'Live Market', 
+        'portfolio': 'Portfolio', 
+        'transactions': 'Transactions', 
+        'watchlist': 'Watchlist', 
+        '52week': '52-Week H/L Screener',
+        'setup': 'Swing Trading Setup',
+        'stocks': 'Firebase Stock Database'
+    };
+    tabTitle.textContent = titles[tabId] || 'Dashboard';
+
+    if (window.innerWidth <= 768) {
+        sidebar.classList.remove('open');
+        sidebarOverlay.classList.remove('active');
+        if (mobileMoreModal) mobileMoreModal.classList.remove('active');
+    }
+
+    if (tabId === '52week' && hlMarketData.length === 0) {
+        fetch52WeekData();
+    }
+
+    if (tabId === 'setup' && setupEvaluatedData.length === 0) {
+        fetchSetupData();
+    }
+
+    if (tabId === 'stocks' && stocksDatabaseData.length === 0) {
+        fetchStocksData();
+    }
+}
+
 navLinks.forEach(link => {
-    link.addEventListener('click', () => {
-        navLinks.forEach(l => l.classList.remove('active'));
-        tabContents.forEach(t => t.classList.remove('active'));
-
-        link.classList.add('active');
-        const tabId = link.getAttribute('data-tab');
-        document.getElementById(`tab-${tabId}`).classList.add('active');
-
-        const titles = { 
-            'live': 'Live Market', 
-            'portfolio': 'Portfolio', 
-            'transactions': 'Transactions', 
-            'watchlist': 'Watchlist', 
-            '52week': '52-Week H/L Screener',
-            'setup': 'Swing Trading Setup',
-            'stocks': 'Firebase Stock Database'
-        };
-        tabTitle.textContent = titles[tabId];
-
-        if (window.innerWidth <= 768) {
-            sidebar.classList.remove('open');
-            sidebarOverlay.classList.remove('active');
-        }
-
-        if (tabId === '52week' && hlMarketData.length === 0) {
-            fetch52WeekData();
-        }
-
-        if (tabId === 'setup' && setupEvaluatedData.length === 0) {
-            fetchSetupData();
-        }
-
-        if (tabId === 'stocks' && stocksDatabaseData.length === 0) {
-            fetchStocksData();
-        }
-    });
+    link.addEventListener('click', () => switchTab(link.getAttribute('data-tab')));
 });
+
+bottomNavItems.forEach(item => {
+    item.addEventListener('click', () => switchTab(item.getAttribute('data-tab')));
+});
+
+moreNavCards.forEach(card => {
+    card.addEventListener('click', () => switchTab(card.getAttribute('data-tab')));
+});
+
+if (mobileMoreBtn && mobileMoreModal) {
+    mobileMoreBtn.addEventListener('click', () => {
+        mobileMoreModal.classList.add('active');
+    });
+}
 
 // --- Auth Logic ---
 onAuthStateChanged(auth, async (user) => {
