@@ -18,7 +18,8 @@ const db = getFirestore(app);
 
 // State
 let currentUser = null;
-let liveMarketData = [];
+// Pre-load cached live prices from localStorage so portfolio renders correctly on refresh
+let liveMarketData = JSON.parse(localStorage.getItem('cache_liveMarketData') || '[]');
 let hlMarketData = []; // 52 week data
 let setupEvaluatedData = []; // Setup tab calculated stocks data
 let setupHistoricalCache = {}; // Historical candles cache
@@ -976,6 +977,7 @@ async function fetchLivePrices() {
 
         const data = await response.json();
         liveMarketData = data.data || [];
+        localStorage.setItem('cache_liveMarketData', JSON.stringify(liveMarketData));
 
         renderLiveTable();
         updatePortfolio();
