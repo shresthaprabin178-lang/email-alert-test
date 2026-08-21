@@ -28,6 +28,9 @@ let transactionsData = [];
 let watchlistData = [];
 let currentCash = 0;
 let totalDeposited = 0;
+let portfolioSortBy = 'pl-desc';
+let portfolioSearchQuery = '';
+let portfolioViewMode = 'grid'; // 'grid' or 'table'
 
 // Tracks which watchlist alerts have been shown this browser session
 // to avoid repeat pop-ups on every re-render
@@ -552,58 +555,291 @@ function computeHoldings() {
     return holdings;
 }
 
+// --- Portfolio Controls & Event Listeners ---
+document.addEventListener('DOMContentLoaded', () => {
+    setupPortfolioControls();
+});
+
+function setupPortfolioControls() {
+    const searchInput = document.getElementById('portfolio-search-input');
+    const sortSelect = document.getElementById('portfolio-sort-select');
+    const gridBtn = document.getElementById('view-mode-grid');
+    const tableBtn = document.getElementById('view-mode-table');
+    const resetBtn = document.getElementById('reset-portfolio-btn');
+
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            portfolioSearchQuery = e.target.value.trim().toUpperCase();
+            updatePortfolio();
+        });
+    }
+
+    if (sortSelect) {
+        sortSelect.addEventListener('change', (e) => {
+            portfolioSortBy = e.target.value;
+            updatePortfolio();
+        });
+    }
+
+    if (gridBtn && tableBtn) {
+        gridBtn.addEventListener('click', () => {
+            portfolioViewMode = 'grid';
+            gridBtn.classList.add('active');
+            gridBtn.style.background = 'var(--accent)';
+            gridBtn.style.color = 'white';
+            tableBtn.classList.remove('active');
+            tableBtn.style.background = 'transparent';
+            tableBtn.style.color = 'var(--text-secondary)';
+            updatePortfolio();
+        });
+
+        tableBtn.addEventListener('click', () => {
+            portfolioViewMode = 'table';
+            tableBtn.classList.add('active');
+            tableBtn.style.background = 'var(--accent)';
+            tableBtn.style.color = 'white';
+            gridBtn.classList.remove('active');
+            gridBtn.style.background = 'transparent';
+            gridBtn.style.color = 'var(--text-secondary)';
+            updatePortfolio();
+        });
+    }
+
+    if (resetBtn) {
+        resetBtn.addEventListener('click', async () => {
+            if (!currentUser) return;
+            if (confirm("Are you sure you want to reset your portfolio? This will permanently delete all your transaction records.")) {
+                try {
+                    const q = query(collection(db, "transactions"), where("uid", "==", currentUser.uid));
+                    const snapshot = await getDocs(q);
+                    const deletePromises = [];
+                    snapshot.forEach(docSnap => deletePromises.push(deleteDoc(doc(db, "transactions", docSnap.id))));
+                    await Promise.all(deletePromises);
+                    alert("Portfolio reset successfully.");
+                } catch (err) {
+                    alert("Failed to reset portfolio.");
+                }
+            }
+        });
+    }
+}
+setupPortfolioControls();
+
 function updatePortfolio() {
-    portfolioTableBody.innerHTML = '';
+    const holdingsContainer = document.getElementById('portfolio-holdings-container');
+    if (!holdingsContainer) return;
+    
+    holdingsContainer.innerHTML = '';
     const holdings = computeHoldings();
     let totalInvested = 0, currentTotalValue = 0, totalNetValue = 0;
     
     const holdingKeys = Object.keys(holdings).filter(k => holdings[k].qty > 0);
 
-    if (holdingKeys.length === 0) {
-        portfolioTableBody.innerHTML = '<tr><td colspan="11" class="text-center">No active holdings.</td></tr>';
+    // Build enriched holding items array
+    const holdingItems = holdingKeys.map(symbol => {
+        const h = holdings[symbol];
+        // Current Investment = invested - bonusCost (exclude Rs 100 bonus cost base)
+        const actualInvested = h.invested - (h.bonusCost || 0);
+        totalInvested += actualInvested;
+        
+        let ltp = h.wacc;
+        const liveStock = liveMarketData.find(s => s.symbol === symbol);
+        if (liveStock) ltp = parseFloat(liveStock.ltp.replace(/,/g, ''));
+
+        // Calculate potential net receivable if sold today (assume short-term tax for conservative estimate)
+        const fees = calculateNepseFees('SELL', h.qty, ltp, h.wacc, false);
+        const netReceivable = fees.totalAmount;
+        
+        const currentValue = h.qty * ltp;
+        currentTotalValue += currentValue;
+        totalNetValue += netReceivable;
+
+        const pl = netReceivable - actualInvested;
+        const plPerc = actualInvested > 0 ? (pl / actualInvested) * 100 : 0;
+
+        return {
+            symbol,
+            qty: h.qty,
+            wacc: h.wacc,
+            ltp,
+            actualInvested,
+            currentValue,
+            netReceivable,
+            pl,
+            plPerc,
+            targetPrice: h.targetPrice,
+            stopLoss: h.stopLoss
+        };
+    });
+
+    // Filter items by symbol search query if entered
+    let filteredItems = holdingItems;
+    if (portfolioSearchQuery) {
+        filteredItems = holdingItems.filter(item => item.symbol.includes(portfolioSearchQuery));
+    }
+
+    // Sort items based on portfolioSortBy
+    filteredItems.sort((a, b) => {
+        switch (portfolioSortBy) {
+            case 'name-asc':
+                return a.symbol.localeCompare(b.symbol);
+            case 'name-desc':
+                return b.symbol.localeCompare(a.symbol);
+            case 'pl-desc':
+                return b.pl - a.pl;
+            case 'pl-asc':
+                return a.pl - b.pl;
+            case 'pl-perc-desc':
+                return b.plPerc - a.plPerc;
+            case 'pl-perc-asc':
+                return a.plPerc - b.plPerc;
+            case 'value-desc':
+                return b.currentValue - a.currentValue;
+            case 'value-asc':
+                return a.currentValue - b.currentValue;
+            default:
+                return b.pl - a.pl;
+        }
+    });
+
+    if (filteredItems.length === 0) {
+        holdingsContainer.innerHTML = `
+            <div class="glass-card text-center" style="padding: 2.5rem 1rem;">
+                <i class="ph ph-briefcase" style="font-size: 2.5rem; color: var(--text-secondary); margin-bottom: 0.5rem; display: block;"></i>
+                <p style="color: var(--text-secondary); font-size: 1rem;">${holdingItems.length === 0 ? 'No active holdings in your portfolio yet.' : 'No holdings found matching your search.'}</p>
+            </div>
+        `;
     } else {
-        holdingKeys.forEach(symbol => {
-            const h = holdings[symbol];
-            // Current Investment = invested - bonusCost (exclude Rs 100 bonus cost base)
-            const actualInvested = h.invested - (h.bonusCost || 0);
-            totalInvested += actualInvested;
+        if (portfolioViewMode === 'grid') {
+            // Render Card Grid View (No Horizontal Scroll)
+            const gridEl = document.createElement('div');
+            gridEl.className = 'portfolio-cards-grid';
+
+            filteredItems.forEach(item => {
+                const plClass = item.pl >= 0 ? 'positive' : 'negative';
+                const card = document.createElement('div');
+                card.className = 'portfolio-card';
+
+                const targetDisplay = item.targetPrice ? `<span class="positive">Rs ${parseFloat(item.targetPrice).toFixed(2)}</span>` : '<span class="text-secondary">—</span>';
+                const slDisplay = item.stopLoss ? `<span class="negative">Rs ${parseFloat(item.stopLoss).toFixed(2)}</span>` : '<span class="text-secondary">—</span>';
+
+                card.innerHTML = `
+                    <div class="portfolio-card-header">
+                        <div class="symbol-wrap">
+                            <button type="button" class="stock-symbol-btn stock-tx-trigger-btn" data-symbol="${item.symbol}" title="Click to view transaction history for ${item.symbol}">
+                                <i class="ph ph-clock-counter-clockwise"></i> ${item.symbol}
+                            </button>
+                        </div>
+                        <div class="ltp-wrap">
+                            <span class="text-sm text-secondary" style="display:block; font-size:0.75rem;">LTP</span>
+                            <span class="ltp-val">Rs ${item.ltp.toFixed(2)}</span>
+                        </div>
+                    </div>
+                    <div class="portfolio-card-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">Holding Qty</span>
+                            <span class="stat-val">${item.qty} shares</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">WACC Price</span>
+                            <span class="stat-val">Rs ${item.wacc.toFixed(2)}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Current Inv.</span>
+                            <span class="stat-val">Rs ${item.actualInvested.toFixed(2)}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Current Value</span>
+                            <span class="stat-val">Rs ${item.currentValue.toFixed(2)}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Target Buy/TP</span>
+                            <span class="stat-val">${targetDisplay}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Stop Loss</span>
+                            <span class="stat-val">${slDisplay}</span>
+                        </div>
+                    </div>
+                    <div class="portfolio-card-footer">
+                        <div class="pl-pill">
+                            <span class="pl-amount ${plClass}">${item.pl >= 0 ? '+' : ''}Rs ${item.pl.toFixed(2)}</span>
+                            <span class="pl-perc-badge badge ${plClass}">${item.pl >= 0 ? '+' : ''}${item.plPerc.toFixed(2)}%</span>
+                        </div>
+                        <div class="card-actions">
+                            <button class="primary-btn btn-small sell-action-btn" data-symbol="${item.symbol}" data-qty="${item.qty}" data-ltp="${item.ltp}">Sell</button>
+                            <button class="secondary-btn btn-small edit-targets-btn" data-symbol="${item.symbol}" data-target="${item.targetPrice || ''}" data-sl="${item.stopLoss || ''}" title="Set Price Alerts"><i class="ph ph-bell"></i></button>
+                        </div>
+                    </div>
+                `;
+                gridEl.appendChild(card);
+            });
+            holdingsContainer.appendChild(gridEl);
+        } else {
+            // Render Compact Table View
+            const tableWrap = document.createElement('div');
+            tableWrap.className = 'table-container';
             
-            let ltp = h.wacc;
-            const liveStock = liveMarketData.find(s => s.symbol === symbol);
-            if (liveStock) ltp = parseFloat(liveStock.ltp.replace(/,/g, ''));
-
-            // Calculate potential net receivable if sold today (assume short-term tax for conservative estimate)
-            const fees = calculateNepseFees('SELL', h.qty, ltp, h.wacc, false);
-            const netReceivable = fees.totalAmount;
-            
-            const currentValue = h.qty * ltp;
-            currentTotalValue += currentValue;
-            totalNetValue += netReceivable;
-
-            const pl = netReceivable - actualInvested;
-            const plPerc = actualInvested > 0 ? (pl / actualInvested) * 100 : 0;
-            const plClass = pl >= 0 ? 'positive' : 'negative';
-
-            const tr = document.createElement('tr');
-            const targetDisplay = h.targetPrice ? `<span class="positive">Rs ${parseFloat(h.targetPrice).toFixed(2)}</span>` : '<span class="text-sm">—</span>';
-            const slDisplay = h.stopLoss ? `<span class="negative">Rs ${parseFloat(h.stopLoss).toFixed(2)}</span>` : '<span class="text-sm">—</span>';
-            tr.innerHTML = `
-                <td><strong>${symbol}</strong></td>
-                <td>${h.qty}</td>
-                <td>Rs ${h.wacc.toFixed(2)}</td>
-                <td>Rs ${ltp.toFixed(2)}</td>
-                <td>Rs ${actualInvested.toFixed(2)}</td>
-                <td>Rs ${currentValue.toFixed(2)}</td>
-                <td class="${plClass}">${pl > 0 ? '+' : ''}Rs ${pl.toFixed(2)}</td>
-                <td><span class="badge ${plClass}">${pl > 0 ? '+' : ''}${plPerc.toFixed(2)}%</span></td>
-                <td>${targetDisplay}</td>
-                <td>${slDisplay}</td>
-                <td style="display:flex;gap:0.5rem;">
-                    <button class="primary-btn btn-small sell-action-btn" data-symbol="${symbol}" data-qty="${h.qty}" data-ltp="${ltp}">Sell</button>
-                    <button class="secondary-btn btn-small edit-targets-btn" data-symbol="${symbol}" data-target="${h.targetPrice || ''}" data-sl="${h.stopLoss || ''}"><i class="ph ph-bell"></i></button>
-                </td>
+            const table = document.createElement('table');
+            table.id = 'portfolio-table';
+            table.innerHTML = `
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Qty</th>
+                        <th>WACC</th>
+                        <th>LTP</th>
+                        <th>Current Inv.</th>
+                        <th>Current Value</th>
+                        <th>P&L (Net)</th>
+                        <th>P&L %</th>
+                        <th>Target</th>
+                        <th>Stop Loss</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="portfolio-table-body"></tbody>
             `;
-            portfolioTableBody.appendChild(tr);
+
+            const tbody = table.querySelector('tbody');
+            filteredItems.forEach(item => {
+                const plClass = item.pl >= 0 ? 'positive' : 'negative';
+                const tr = document.createElement('tr');
+                const targetDisplay = item.targetPrice ? `<span class="positive">Rs ${parseFloat(item.targetPrice).toFixed(2)}</span>` : '<span class="text-sm">—</span>';
+                const slDisplay = item.stopLoss ? `<span class="negative">Rs ${parseFloat(item.stopLoss).toFixed(2)}</span>` : '<span class="text-sm">—</span>';
+
+                tr.innerHTML = `
+                    <td>
+                        <button type="button" class="stock-symbol-btn stock-tx-trigger-btn" data-symbol="${item.symbol}" title="View transaction history for ${item.symbol}">
+                            ${item.symbol}
+                        </button>
+                    </td>
+                    <td>${item.qty}</td>
+                    <td>Rs ${item.wacc.toFixed(2)}</td>
+                    <td>Rs ${item.ltp.toFixed(2)}</td>
+                    <td>Rs ${item.actualInvested.toFixed(2)}</td>
+                    <td>Rs ${item.currentValue.toFixed(2)}</td>
+                    <td class="${plClass}">${item.pl >= 0 ? '+' : ''}Rs ${item.pl.toFixed(2)}</td>
+                    <td><span class="badge ${plClass}">${item.pl >= 0 ? '+' : ''}${item.plPerc.toFixed(2)}%</span></td>
+                    <td>${targetDisplay}</td>
+                    <td>${slDisplay}</td>
+                    <td style="display:flex;gap:0.5rem;">
+                        <button class="primary-btn btn-small sell-action-btn" data-symbol="${item.symbol}" data-qty="${item.qty}" data-ltp="${item.ltp}">Sell</button>
+                        <button class="secondary-btn btn-small edit-targets-btn" data-symbol="${item.symbol}" data-target="${item.targetPrice || ''}" data-sl="${item.stopLoss || ''}"><i class="ph ph-bell"></i></button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+            tableWrap.appendChild(table);
+            holdingsContainer.appendChild(tableWrap);
+        }
+
+        // Attach event listeners for stock symbol clicks and card actions
+        document.querySelectorAll('.stock-tx-trigger-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const sym = e.currentTarget.getAttribute('data-symbol');
+                openStockTxModal(sym);
+            });
         });
 
         document.querySelectorAll('.sell-action-btn').forEach(btn => {
@@ -625,14 +861,14 @@ function updatePortfolio() {
         });
     }
 
+    // Top metrics updates
     document.getElementById('portfolio-total-invested').textContent = `Rs ${totalInvested.toFixed(2)}`;
     document.getElementById('portfolio-total-value').textContent = `Rs ${currentTotalValue.toFixed(2)}`;
     
     const initEl = document.getElementById('portfolio-initial-invested');
     if (initEl) initEl.textContent = `Rs ${totalDeposited.toFixed(2)}`;
 
-    // Feature 1 & 4: Overall P&L based on Initial Investment
-    // Formula: ((Available Cash + Current Value of Holdings) - Initial Investment) / Initial Investment
+    // Overall P&L based on Initial Investment
     const totalAssetValue = currentTotalValue + currentCash;
     const totalPl = totalAssetValue - totalDeposited;
     
@@ -648,6 +884,124 @@ function updatePortfolio() {
     plEl.className = totalPl >= 0 ? 'positive' : 'negative';
     plPercEl.textContent = `${totalPl >= 0 ? '+' : ''}${totalPlPerc.toFixed(2)}%`;
     plPercEl.className = `badge ${totalPl >= 0 ? 'positive' : 'negative'}`;
+}
+
+// --- Individual Stock Transaction History Modal ---
+function openStockTxModal(symbol) {
+    const stockTxModal = document.getElementById('stock-tx-modal');
+    if (!symbol || !stockTxModal) return;
+
+    document.getElementById('modal-tx-symbol').textContent = symbol;
+    
+    // Filter user transactions for this individual stock
+    const symbolTxs = transactionsData.filter(t => t.symbol === symbol);
+
+    // Calculate symbol-level summary stats
+    let boughtQty = 0, boughtCost = 0;
+    let soldQty = 0, soldRev = 0;
+    let cgtPaid = 0;
+
+    symbolTxs.forEach(t => {
+        if (t.type === 'BUY' || t.type === 'BONUS') {
+            boughtQty += t.qty;
+            boughtCost += (t.qty * (t.wacc || t.price));
+        } else if (t.type === 'SELL') {
+            soldQty += t.qty;
+            soldRev += (t.netReceivable || (t.qty * t.price));
+            cgtPaid += (t.cgtPaid || 0);
+        }
+    });
+
+    const holdings = computeHoldings();
+    const activeHolding = holdings[symbol] || { qty: 0, wacc: 0 };
+
+    let costOfSoldShares = soldQty * (activeHolding.wacc || (boughtQty > 0 ? boughtCost / boughtQty : 0));
+    let realizedPl = soldRev - costOfSoldShares;
+
+    document.getElementById('modal-tx-holding-qty').textContent = `${activeHolding.qty} Qty`;
+    document.getElementById('modal-tx-wacc').textContent = `WACC: Rs ${activeHolding.wacc.toFixed(2)}`;
+    
+    document.getElementById('modal-tx-total-bought').textContent = `${boughtQty} Qty`;
+    document.getElementById('modal-tx-bought-cost').textContent = `Cost: Rs ${boughtCost.toFixed(2)}`;
+    
+    document.getElementById('modal-tx-total-sold').textContent = `${soldQty} Qty`;
+    document.getElementById('modal-tx-sold-rev').textContent = `Recv: Rs ${soldRev.toFixed(2)}`;
+
+    const realizedEl = document.getElementById('modal-tx-realized-pl');
+    realizedEl.textContent = `${realizedPl >= 0 ? '+' : ''}Rs ${realizedPl.toFixed(2)}`;
+    realizedEl.className = realizedPl >= 0 ? 'positive' : 'negative';
+    document.getElementById('modal-tx-cgt-paid').textContent = `CGT Paid: Rs ${cgtPaid.toFixed(2)}`;
+
+    // Populate transaction records table
+    const stockTxTableBody = document.getElementById('stock-tx-table-body');
+    stockTxTableBody.innerHTML = '';
+    
+    if (symbolTxs.length === 0) {
+        stockTxTableBody.innerHTML = '<tr><td colspan="6" class="text-center">No transaction records found for this stock.</td></tr>';
+    } else {
+        symbolTxs.forEach(tx => {
+            const tr = document.createElement('tr');
+            const dateStr = tx.createdAt?.toDate ? tx.createdAt.toDate().toLocaleDateString() : (tx.dateString || 'N/A');
+            const isSell = tx.type === 'SELL';
+            const isBonus = tx.type === 'BONUS';
+
+            let typeBadgeClass = isSell ? 'negative' : (isBonus ? 'accent' : 'positive');
+            let executedText = isBonus ? 'FREE (Rs 100 base)' : `Rs ${tx.price.toFixed(2)}`;
+            let netAmountText = isSell 
+                ? `Net: Rs ${tx.netReceivable ? tx.netReceivable.toFixed(2) : (tx.qty * tx.price).toFixed(2)}`
+                : (isBonus ? 'Rs 0.00' : `Cost: Rs ${tx.wacc ? (tx.qty * tx.wacc).toFixed(2) : (tx.qty * tx.price).toFixed(2)}`);
+
+            tr.innerHTML = `
+                <td>${dateStr}</td>
+                <td><span class="badge ${typeBadgeClass}">${tx.type}</span></td>
+                <td><strong>${tx.qty}</strong></td>
+                <td>${executedText}</td>
+                <td>${netAmountText}</td>
+                <td>
+                    <button class="btn-icon modal-edit-tx-btn" data-id="${tx.id}"><i class="ph ph-pencil-simple"></i></button>
+                    <button class="btn-icon modal-delete-tx-btn text-negative" data-id="${tx.id}"><i class="ph ph-trash"></i></button>
+                </td>
+            `;
+            stockTxTableBody.appendChild(tr);
+        });
+
+        // Add listeners for edit/delete actions inside modal
+        stockTxTableBody.querySelectorAll('.modal-edit-tx-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const id = e.currentTarget.getAttribute('data-id');
+                const tx = transactionsData.find(t => t.id === id);
+                if (tx) {
+                    stockTxModal.classList.remove('active');
+                    openEditModal(tx);
+                }
+            });
+        });
+
+        stockTxTableBody.querySelectorAll('.modal-delete-tx-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const id = e.currentTarget.getAttribute('data-id');
+                if (confirm("Delete this transaction record?")) {
+                    try {
+                        await deleteDoc(doc(db, "transactions", id));
+                        setTimeout(() => openStockTxModal(symbol), 300);
+                    } catch (err) {
+                        alert("Error deleting transaction record");
+                    }
+                }
+            });
+        });
+    }
+
+    const modalAddTxBtn = document.getElementById('modal-add-tx-btn');
+    if (modalAddTxBtn) {
+        modalAddTxBtn.onclick = () => {
+            stockTxModal.classList.remove('active');
+            document.getElementById('tx-symbol').value = symbol;
+            switchTab('transactions');
+        };
+    }
+
+    stockTxModal.classList.add('active');
 }
 
 // --- Sell Modal Logic ---

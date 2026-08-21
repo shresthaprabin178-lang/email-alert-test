@@ -165,30 +165,39 @@
 
                 <div class="glass-card mt-2">
                     <div class="table-controls">
-                        <h3>Your Holdings</h3>
-                        <button id="reset-portfolio-btn" class="primary-btn warning-btn btn-small"><i class="ph ph-trash"></i> Reset Portfolio</button>
+                        <div>
+                            <h3>Your Holdings</h3>
+                            <p class="text-sm text-secondary" style="margin-top: 0.25rem;">
+                                Click any stock symbol to view its complete transaction history.
+                            </p>
+                        </div>
+                        <div class="controls-right">
+                            <div class="search-box">
+                                <i class="ph ph-magnifying-glass"></i>
+                                <input type="text" id="portfolio-search-input" placeholder="Search Holding Symbol...">
+                            </div>
+                            <div class="filter-group" style="display: flex; align-items: center; gap: 0.5rem;">
+                                <i class="ph ph-sort-ascending" style="font-size: 1.1rem; color: var(--text-secondary);"></i>
+                                <select id="portfolio-sort-select" class="auto-width" style="padding: 0.6rem 0.8rem;">
+                                    <option value="pl-desc">Profit & Loss (High to Low)</option>
+                                    <option value="pl-asc">Profit & Loss (Low to High)</option>
+                                    <option value="pl-perc-desc">P&L % (High to Low)</option>
+                                    <option value="pl-perc-asc">P&L % (Low to High)</option>
+                                    <option value="name-asc">Symbol (A to Z)</option>
+                                    <option value="name-desc">Symbol (Z to A)</option>
+                                    <option value="value-desc">Current Value (High to Low)</option>
+                                    <option value="value-asc">Current Value (Low to High)</option>
+                                </select>
+                            </div>
+                            <div class="view-mode-toggle" style="display: flex; gap: 4px; background: var(--bg-input); padding: 3px; border-radius: 8px; border: 1px solid var(--border-color);">
+                                <button type="button" id="view-mode-grid" class="view-btn active" title="Grid Cards View" style="background: var(--accent); color: white; border: none; padding: 0.4rem 0.75rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem; transition: all 0.2s;"><i class="ph ph-squares-four"></i> Cards</button>
+                                <button type="button" id="view-mode-table" class="view-btn" title="Compact Table View" style="background: transparent; color: var(--text-secondary); border: none; padding: 0.4rem 0.75rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem; transition: all 0.2s;"><i class="ph ph-table"></i> Table</button>
+                            </div>
+                            <button id="reset-portfolio-btn" class="primary-btn warning-btn btn-small"><i class="ph ph-trash"></i> Reset Portfolio</button>
+                        </div>
                     </div>
-                    <div class="table-container">
-                        <table id="portfolio-table">
-                            <thead>
-                                <tr>
-                                    <th>Symbol</th>
-                                    <th>Qty</th>
-                                    <th>WACC</th>
-                                    <th>LTP</th>
-                                    <th>Current Inv.</th>
-                                    <th>Current Value</th>
-                                    <th>P&L (Net)</th>
-                                    <th>P&L %</th>
-                                    <th>Target</th>
-                                    <th>Stop Loss</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody id="portfolio-table-body">
-                                <tr><td colspan="11" class="text-center">No holdings yet.</td></tr>
-                            </tbody>
-                        </table>
+                    <div id="portfolio-holdings-container">
+                        <!-- Dynamically populated card grid or responsive table -->
                     </div>
                 </div>
             </div>
@@ -602,6 +611,69 @@
                 </table>
             </div>
             <div class="modal-actions mt-2" style="justify-content: flex-end;">
+                <button type="button" class="secondary-btn close-modal">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Individual Stock Transaction History Modal -->
+    <div id="stock-tx-modal" class="modal-overlay">
+        <div class="modal glass-card" style="max-width: 750px; width: 92%;">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                    <i class="ph ph-arrows-left-right" style="font-size: 1.5rem; color: var(--accent);"></i>
+                    <div>
+                        <h3 style="margin:0;">Transactions for <span id="modal-tx-symbol" class="accent"></span></h3>
+                        <p class="text-sm text-secondary" style="margin: 2px 0 0 0;">Transaction log & performance breakdown</p>
+                    </div>
+                </div>
+                <button type="button" class="btn-icon close-modal"><i class="ph ph-x"></i></button>
+            </div>
+            
+            <!-- Stock Summary Banner -->
+            <div id="modal-tx-summary-grid" class="stock-tx-summary-grid mb-15">
+                <div class="stock-tx-summary-card">
+                    <span class="label">Current Holding</span>
+                    <h4 id="modal-tx-holding-qty">0 Qty</h4>
+                    <span id="modal-tx-wacc" class="text-sm text-secondary">WACC: Rs 0.00</span>
+                </div>
+                <div class="stock-tx-summary-card">
+                    <span class="label">Total Bought</span>
+                    <h4 id="modal-tx-total-bought">0 Qty</h4>
+                    <span id="modal-tx-bought-cost" class="text-sm text-secondary">Rs 0.00</span>
+                </div>
+                <div class="stock-tx-summary-card">
+                    <span class="label">Total Sold</span>
+                    <h4 id="modal-tx-total-sold">0 Qty</h4>
+                    <span id="modal-tx-sold-rev" class="text-sm text-secondary">Rs 0.00</span>
+                </div>
+                <div class="stock-tx-summary-card">
+                    <span class="label">Realized P&L</span>
+                    <h4 id="modal-tx-realized-pl" class="positive">Rs 0.00</h4>
+                    <span id="modal-tx-cgt-paid" class="text-sm text-secondary">CGT: Rs 0.00</span>
+                </div>
+            </div>
+
+            <div class="table-container" style="max-height: 380px; overflow-y: auto;">
+                <table id="stock-tx-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th>Qty</th>
+                            <th>Executed / WACC</th>
+                            <th>Net Amount</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="stock-tx-table-body">
+                        <tr><td colspan="6" class="text-center">Loading transactions...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="modal-actions mt-2" style="justify-content: space-between; align-items: center;">
+                <button type="button" id="modal-add-tx-btn" class="primary-btn btn-small"><i class="ph ph-plus-circle"></i> Add Transaction</button>
                 <button type="button" class="secondary-btn close-modal">Close</button>
             </div>
         </div>

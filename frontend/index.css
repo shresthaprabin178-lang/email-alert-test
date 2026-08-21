@@ -785,14 +785,176 @@ input:focus, select:focus {
     border: none;
     color: var(--accent);
     font-weight: 700;
-    font-size: 0.95rem;
+    font-size: 1.05rem;
     cursor: pointer;
     text-decoration: underline;
     text-underline-offset: 3px;
     padding: 0;
-    transition: color 0.2s ease;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
 }
 
 .stock-symbol-btn:hover {
-    color: var(--blue-600);
+    color: #3b82f6;
+    transform: translateY(-1px);
+}
+
+/* ==========================================================================
+   Portfolio Cards Grid Layout (No-Scroll Responsive Redesign)
+   ========================================================================== */
+.portfolio-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1.25rem;
+    margin-top: 0.5rem;
+}
+
+.portfolio-card {
+    background: var(--bg-panel);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s ease, border-color 0.25s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.portfolio-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-md);
+    border-color: rgba(37, 99, 235, 0.3);
+}
+
+.portfolio-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.75rem;
+}
+
+.portfolio-card-header .symbol-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.portfolio-card-header .ltp-wrap {
+    text-align: right;
+}
+
+.portfolio-card-header .ltp-val {
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.portfolio-card-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem 1rem;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 0.85rem 1rem;
+}
+
+.stat-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.stat-item .stat-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.stat-item .stat-val {
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.portfolio-card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 0.25rem;
+}
+
+.pl-pill {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.pl-pill .pl-amount {
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.pl-pill .pl-perc-badge {
+    display: inline-block;
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0.15rem 0.5rem;
+    border-radius: 6px;
+    width: fit-content;
+}
+
+.card-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Stock Transaction Modal Summaries */
+.stock-tx-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
+}
+
+.stock-tx-summary-card {
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.stock-tx-summary-card .label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+    text-transform: uppercase;
+}
+
+.stock-tx-summary-card h4 {
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.mb-15 {
+    margin-bottom: 1.25rem;
+}
+
+@media (max-width: 768px) {
+    .portfolio-cards-grid {
+        grid-template-columns: 1fr;
+    }
+    .stock-tx-summary-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
 }
