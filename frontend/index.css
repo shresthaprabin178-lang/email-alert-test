@@ -950,6 +950,18 @@ input:focus, select:focus {
     margin-bottom: 1.25rem;
 }
 
+.badge-sector {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    background: var(--bg-input);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    white-space: nowrap;
+}
+
 @media (max-width: 768px) {
     .portfolio-cards-grid {
         grid-template-columns: 1fr;

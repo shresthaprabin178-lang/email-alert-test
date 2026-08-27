@@ -11,12 +11,31 @@ require('dotenv').config();
 // --- Firebase Admin Setup ---
 const { getFirestore } = require('firebase-admin/firestore');
 
-// This reads the raw JSON you pasted into the Render Environment Variable
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+let serviceAccount;
+if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    try {
+        serviceAccount = typeof process.env.FIREBASE_SERVICE_ACCOUNT === 'string'
+            ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
+            : process.env.FIREBASE_SERVICE_ACCOUNT;
+    } catch (e) {
+        console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT env var:", e.message);
+    }
+}
+if (!serviceAccount) {
+    try {
+        serviceAccount = require('./serviceAccountKey.json');
+    } catch (e) {
+        console.warn("No local serviceAccountKey.json found:", e.message);
+    }
+}
 
-admin.initializeApp({
-    credential: admin.cert(serviceAccount)
-});
+if (serviceAccount) {
+    admin.initializeApp({
+        credential: admin.cert(serviceAccount)
+    });
+} else {
+    admin.initializeApp();
+}
 
 const db = getFirestore();
 
@@ -27,30 +46,49 @@ app.use(express.json());
 // Serve frontend static files
 app.use(express.static(path.join(__dirname, '../frontend')));
 
-// --- Email Sender via Resend HTTP API (works on Render - uses HTTPS port 443) ---
-// Resend.com free tier: 3000 emails/month. No SMTP ports needed.
-// Set RESEND_API_KEY in your Render environment variables.
+// --- Email Sender with Dual Transport (Resend + Gmail Nodemailer Fallback) ---
 async function sendEmail(to, subject, text) {
-    const apiKey = process.env.RESEND_API_KEY;
-    if (!apiKey) {
-        throw new Error('RESEND_API_KEY environment variable not set.');
+    const resendKey = process.env.RESEND_API_KEY;
+    if (resendKey) {
+        try {
+            const response = await axios.post('https://api.resend.com/emails', {
+                from: process.env.SENDER_EMAIL || 'Stock Alerts <alerts@prabinkshrestha.com.np>',
+                to: [to],
+                subject: subject,
+                text: text
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${resendKey}`,
+                    'Content-Type': 'application/json'
+                },
+                timeout: 15000
+            });
+            if (response.status === 200 || response.status === 201) {
+                return response.data;
+            }
+        } catch (resendErr) {
+            console.warn('Resend API failed, falling back to SMTP Nodemailer:', resendErr.message);
+        }
     }
-    const response = await axios.post('https://api.resend.com/emails', {
-        from: 'Stock Alerts <alerts@prabinkshrestha.com.np>',
-        to: [to],
-        subject: subject,
-        text: text
-    }, {
-        headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-        },
-        timeout: 15000
-    });
-    if (response.status !== 200 && response.status !== 201) {
-        throw new Error(`Resend API error: ${response.status} ${JSON.stringify(response.data)}`);
+
+    // Nodemailer fallback (using Gmail App password or custom SMTP)
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: process.env.EMAIL_USER,
+                pass: process.env.EMAIL_PASS
+            }
+        });
+        return await transporter.sendMail({
+            from: process.env.SENDER_EMAIL || `"Stock Alerts" <${process.env.EMAIL_USER}>`,
+            to: to,
+            subject: subject,
+            text: text
+        });
     }
-    return response.data;
+
+    throw new Error('No working email provider configured (set RESEND_API_KEY or EMAIL_USER/EMAIL_PASS).');
 }
 
 // --- Shared Scraper Function ---
@@ -169,24 +207,29 @@ app.get('/api/historical-prices', async (req, res) => {
 });
 
 // Real 52-Week High/Low scraper
+// Source: https://www.sharesansar.com/today-share-price (server-rendered, all NEPSE stocks)
+// Confirmed column layout (0-indexed):
+//   0=S.No  1=Symbol  2=Conf.  3=Open  4=High  5=Low  6=Close  7=LTP
+//   8=Close-LTP  9=Close-LTP%  10=VWAP  11=Vol  12=Prev.Close  13=Turnover
+//   14=Trans.  15=Diff  16=Range  17=Diff%  18=Range%  19=VWAP%
+//   20=120Days  21=180Days  22=52WeeksHigh  23=52WeeksLow
 async function scrape52WeekData() {
-    const url = 'https://www.sharesansar.com/nepse-data/52weeks';
+    const url = 'https://www.sharesansar.com/today-share-price';
     const response = await axios.get(url, {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120' },
-        timeout: 20000
+        timeout: 25000
     });
     const $ = cheerio.load(response.data);
     const stocks = [];
 
-    // Sharesansar 52-week table columns: Symbol, LTP, 52W High, 52W Low, ...
-    $('table tbody tr').each((i, el) => {
+    $('table#headFixed tbody tr').each((i, el) => {
         const tds = $(el).find('td');
-        if (tds.length >= 4) {
-            const symbol = $(tds[0]).text().trim();
-            const ltp    = $(tds[1]).text().trim();
-            const high52 = $(tds[2]).text().trim();
-            const low52  = $(tds[3]).text().trim();
-            if (symbol && symbol !== 'Symbol') {
+        if (tds.length >= 24) {
+            const symbol = $(tds[1]).text().trim();
+            const ltp    = $(tds[7]).text().trim();
+            const high52 = $(tds[22]).text().trim();
+            const low52  = $(tds[23]).text().trim();
+            if (symbol && symbol !== 'Symbol' && high52 && low52) {
                 stocks.push({ symbol, ltp, high52, low52 });
             }
         }
@@ -194,60 +237,107 @@ async function scrape52WeekData() {
     return stocks;
 }
 
-// Static sector mapping for NEPSE stocks (major ones)
+// Static sector mapping for NEPSE stocks
 const SECTOR_MAP = {
+    // Commercial Banks
     NABIL: 'Commercial Banks', ADBL: 'Commercial Banks', EBL: 'Commercial Banks',
     NICA: 'Commercial Banks', SBI: 'Commercial Banks', NBB: 'Commercial Banks',
     KBL: 'Commercial Banks', MBL: 'Commercial Banks', PCBL: 'Commercial Banks',
-    SANIMA: 'Commercial Banks', HIDCL: 'Hydropower', NHPC: 'Hydropower',
-    UPPER: 'Hydropower', AKPL: 'Hydropower', BARUN: 'Hydropower',
-    NLIC: 'Life Insurance', LICN: 'Life Insurance', ALICL: 'Life Insurance',
-    SICL: 'Non Life Insurance', NICL: 'Non Life Insurance', PRIN: 'Non Life Insurance',
-    NLICL: 'Non Life Insurance', CBBL: 'Development Banks', KDBL: 'Development Banks',
-    NABBC: 'Development Banks', GFCL: 'Finance', MFIL: 'Microfinance',
+    SANIMA: 'Commercial Banks', CZBIL: 'Commercial Banks', GBIME: 'Commercial Banks',
+    HBL: 'Commercial Banks', NIB: 'Commercial Banks', NMB: 'Commercial Banks',
+    PRVU: 'Commercial Banks', SCB: 'Commercial Banks', SBL: 'Commercial Banks',
+    CCBL: 'Commercial Banks', LBBL: 'Commercial Banks', MEGA: 'Commercial Banks',
+    SRBL: 'Commercial Banks', SHIVM: 'Commercial Banks', MNBBL: 'Commercial Banks',
+    NIMB: 'Commercial Banks', RBB: 'Commercial Banks', NBL: 'Commercial Banks',
+    BOKL: 'Commercial Banks', TNBL: 'Commercial Banks', KRBL: 'Commercial Banks',
+    // Development Banks
+    CBBL: 'Development Banks', KDBL: 'Development Banks', NABBC: 'Development Banks',
+    MLBL: 'Development Banks', MNBBL: 'Development Banks', SADBL: 'Development Banks',
+    KSBBL: 'Development Banks', SAPDBL: 'Development Banks', LBBL: 'Development Banks',
+    GRDBL: 'Development Banks', SBBLJ: 'Development Banks', EDBL: 'Development Banks',
+    JBBL: 'Development Banks', SHINE: 'Development Banks', CORBL: 'Development Banks',
+    MPFL: 'Development Banks', NADEP: 'Development Banks', SABL: 'Development Banks',
+    // Finance
+    GFCL: 'Finance', CFCL: 'Finance', ICFC: 'Finance', MFIL: 'Finance',
+    AFC: 'Finance', BFC: 'Finance', GUFL: 'Finance', HHL: 'Finance',
+    JFL: 'Finance', LBFL: 'Finance', MKCL: 'Finance', NFS: 'Finance',
+    NIFRA: 'Finance', PFL: 'Finance', SFCL: 'Finance', SFL: 'Finance',
+    SIFC: 'Finance', UNIL: 'Finance', GMFIL: 'Finance',
+    // Microfinance
     SMFDB: 'Microfinance', SWBBL: 'Microfinance', NWCFL: 'Microfinance',
-    NTC: 'Others', CHCL: 'Hydropower', NGPL: 'Hydropower', RRHP: 'Hydropower',
-    UNHPL: 'Hydropower', GLH: 'Hotels And Tourism', SONA: 'Manufacturing And Processing',
-    BNT: 'Manufacturing And Processing', HDL: 'Hydropower', DORDI: 'Hydropower',
-    SAHAS: 'Hydropower', PMHPL: 'Hydropower', SICCO: 'Investment',
+    SKBBL: 'Microfinance', DDBL: 'Microfinance', FOWAD: 'Microfinance',
+    GILB: 'Microfinance', HLBSL: 'Microfinance', JSLBB: 'Microfinance',
+    KMCDB: 'Microfinance', MERO: 'Microfinance', MSLB: 'Microfinance',
+    NESDO: 'Microfinance', NICLBSL: 'Microfinance', NUBL: 'Microfinance',
+    RMDC: 'Microfinance', SAMAJ: 'Microfinance', SLBBL: 'Microfinance',
+    SMATA: 'Microfinance', SMBDB: 'Microfinance', SMB: 'Microfinance',
+    UNLB: 'Microfinance', USLB: 'Microfinance', VLBS: 'Microfinance',
+    MLBBL: 'Microfinance', CBFLC: 'Microfinance', ECFL: 'Microfinance',
+    // Life Insurance
+    NLIC: 'Life Insurance', LICN: 'Life Insurance', ALICL: 'Life Insurance',
+    CLI: 'Life Insurance', ILI: 'Life Insurance', JLIC: 'Life Insurance',
+    LGIL: 'Life Insurance', MLIC: 'Life Insurance', NLICL: 'Life Insurance',
+    PLIC: 'Life Insurance', RNLI: 'Life Insurance', SNLI: 'Life Insurance',
+    SLI: 'Life Insurance', SLICL: 'Life Insurance', SRLI: 'Life Insurance',
+    ULIF: 'Life Insurance', ACLBSL: 'Life Insurance', JLIC: 'Life Insurance',
+    // Non Life Insurance
+    SICL: 'Non Life Insurance', NICL: 'Non Life Insurance', PRIN: 'Non Life Insurance',
+    EIC: 'Non Life Insurance', HIC: 'Non Life Insurance', IGI: 'Non Life Insurance',
+    NIC: 'Non Life Insurance', NIL: 'Non Life Insurance', PICL: 'Non Life Insurance',
+    PIC: 'Non Life Insurance', RBCL: 'Non Life Insurance', RMFL: 'Non Life Insurance',
+    SALICO: 'Non Life Insurance', SANIMA: 'Non Life Insurance', SGIC: 'Non Life Insurance',
+    SICL: 'Non Life Insurance', SIC: 'Non Life Insurance', UAIL: 'Non Life Insurance',
+    // Hydropower
+    HIDCL: 'Hydropower', NHPC: 'Hydropower', UPPER: 'Hydropower', AKPL: 'Hydropower',
+    BARUN: 'Hydropower', CHCL: 'Hydropower', NGPL: 'Hydropower', RRHP: 'Hydropower',
+    UNHPL: 'Hydropower', HDL: 'Hydropower', DORDI: 'Hydropower', SAHAS: 'Hydropower',
+    PMHPL: 'Hydropower', SSHL: 'Hydropower', RAIBU: 'Hydropower', NHDL: 'Hydropower',
+    BPCL: 'Hydropower', BPPCL: 'Hydropower', CHL: 'Hydropower', DHPL: 'Hydropower',
+    GHL: 'Hydropower', GVL: 'Hydropower', HPPL: 'Hydropower', HURJA: 'Hydropower',
+    JOSHI: 'Hydropower', KPCL: 'Hydropower', KKHC: 'Hydropower', LLBS: 'Hydropower',
+    MBJC: 'Hydropower', MCHL: 'Hydropower', MHNL: 'Hydropower', MKJC: 'Hydropower',
+    MMKJL: 'Hydropower', MPPL: 'Hydropower', MSHL: 'Hydropower', NKPL: 'Hydropower',
+    NYADI: 'Hydropower', OKHL: 'Hydropower', PPCL: 'Hydropower', PRBM: 'Hydropower',
+    RHPL: 'Hydropower', RKJCL: 'Hydropower', RLJC: 'Hydropower', RMPL: 'Hydropower',
+    ROHINI: 'Hydropower', RSDC: 'Hydropower', RURU: 'Hydropower', SHEL: 'Hydropower',
+    SHL: 'Hydropower', SJCL: 'Hydropower', SMJC: 'Hydropower', SPDL: 'Hydropower',
+    TAMOR: 'Hydropower', TPCL: 'Hydropower', UMPL: 'Hydropower', UMRH: 'Hydropower',
+    UNHPL: 'Hydropower', UPCL: 'Hydropower', VLUCL: 'Hydropower', WNLC: 'Hydropower',
+    RADHI: 'Hydropower', NATHM: 'Hydropower', MAKAR: 'Hydropower', KBSH: 'Hydropower',
+    HDHPC: 'Hydropower', GLBSL: 'Hydropower', BHPL: 'Hydropower',
+    // Hotels & Tourism
+    GLH: 'Hotels And Tourism', TRH: 'Hotels And Tourism', SJJCL: 'Hotels And Tourism',
+    OHL: 'Hotels And Tourism', SLBL: 'Hotels And Tourism', HHCL: 'Hotels And Tourism',
+    // Manufacturing
+    SONA: 'Manufacturing And Processing', BNT: 'Manufacturing And Processing',
+    HDL: 'Manufacturing And Processing', SHIVM: 'Manufacturing And Processing',
+    UNFL: 'Manufacturing And Processing', DOLTI: 'Manufacturing And Processing',
+    GCIL: 'Manufacturing And Processing', RIDI: 'Manufacturing And Processing',
+    LAIN: 'Manufacturing And Processing', BSL: 'Manufacturing And Processing',
+    SNIL: 'Manufacturing And Processing', NBBL: 'Manufacturing And Processing',
+    // Trading
+    BBC: 'Trading', SFCL: 'Trading', NTC: 'Others',
+    // Investment
+    SICCO: 'Investment', CIT: 'Investment', CHDC: 'Investment',
+    NIFRA: 'Investment', NIBL: 'Investment',
 };
 
 app.get('/api/52week-prices', async (req, res) => {
     try {
-        // First try to scrape the dedicated 52-week page
-        let stocks = [];
-        try {
-            stocks = await scrape52WeekData();
-        } catch (scrapeErr) {
-            console.log('52W dedicated page failed, falling back to live prices:', scrapeErr.message);
-        }
-
-        // Fallback: use live prices with prev-close as rough proxy
+        const stocks = await scrape52WeekData();
         if (stocks.length === 0) {
-            const livePrices = await scrapeLivePrices();
-            stocks = livePrices.map(s => {
-                const ltp = parseFloat(s.ltp.replace(/,/g, '')) || 100;
-                const prevClose = parseFloat((s.prevClose || s.ltp).replace(/,/g, '')) || ltp;
-                // Use day's high/low as rough 52W proxies with ±30% spread
-                return {
-                    symbol: s.symbol,
-                    ltp: s.ltp,
-                    high52: (Math.max(ltp, prevClose) * 1.3).toFixed(2),
-                    low52:  (Math.min(ltp, prevClose) * 0.7).toFixed(2)
-                };
-            });
+            return res.status(503).json({ success: false, error: 'No data fetched. Market may be closed or site unavailable.' });
         }
-
         // Attach sector from static map
         const data52 = stocks.map(s => ({
             ...s,
             sector: SECTOR_MAP[s.symbol] || 'Others'
         }));
-
-        res.status(200).json({ success: true, data: data52 });
+        console.log(`[52W] Fetched ${data52.length} stocks from Sharesansar.`);
+        res.status(200).json({ success: true, count: data52.length, data: data52 });
     } catch (error) {
         console.error('52W error:', error.message);
-        res.status(500).json({ success: false, error: 'Failed to fetch 52-week data.' });
+        res.status(500).json({ success: false, error: 'Failed to fetch 52-week data: ' + error.message });
     }
 });
 
@@ -267,15 +357,23 @@ app.post('/api/send-alert', async (req, res) => {
     }
 });
 
+// Helper: Get Nepal date string (UTC+5:45) e.g., "2026-08-27"
+function getNepalDateString() {
+    const now = new Date();
+    // Nepal offset is +5:45 (345 minutes)
+    const nepalOffsetMs = (5 * 60 + 45) * 60 * 1000;
+    const nepalDate = new Date(now.getTime() + nepalOffsetMs);
+    return nepalDate.toISOString().split('T')[0];
+}
+
 // =========================================================
-// BACKGROUND ALERT CHECKER (runs every 5 minutes)
-// This runs automatically even when you are not using the app.
-// As long as this server is alive on Render, it will keep checking.
-// Checks BOTH the 'transactions' collection (portfolio alerts) AND
-// the 'watchlist' collection (takeProfit / stopLoss alerts).
+// BACKGROUND ALERT CHECKER (runs 24/7 in the cloud every 5 minutes)
+// Runs automatically even when the user's laptop is completely turned off.
+// Ensures notifications are sent AT MOST ONCE PER DAY per stock condition.
 // =========================================================
 async function checkAlerts() {
-    console.log(`[${new Date().toISOString()}] 🔄 Background alert checker running...`);
+    const today = getNepalDateString();
+    console.log(`[${new Date().toISOString()}] 🔄 Background alert checker running (Date: ${today})...`);
 
     try {
         // 1. Scrape live prices
@@ -293,32 +391,42 @@ async function checkAlerts() {
         // ---------------------------------------------------------------
         // PART A: Portfolio / Transaction alerts (target price + stop loss)
         // ---------------------------------------------------------------
-        const txSnapshot = await db.collection('transactions')
-            .where('alertTriggered', '==', false)
-            .get();
-
-        console.log(`   Found ${txSnapshot.size} active portfolio alert(s) to check.`);
+        const txSnapshot = await db.collection('transactions').get();
+        let txAlertsSent = 0;
 
         for (const docSnap of txSnapshot.docs) {
             const tx = docSnap.data();
             const ltp = priceMap[tx.symbol];
-            if (!ltp) continue;
+            if (!ltp || !tx.email) continue;
 
             let alertMsg = null;
             let alertSubject = null;
+            const updates = {};
 
-            if (tx.targetPrice && ltp >= tx.targetPrice) {
-                alertSubject = `📊 Stock Alert: ${tx.symbol} - Target Hit`;
-                alertMsg = `🎯 TARGET HIT!\n\nStock: ${tx.symbol}\nCurrent Price: Rs ${ltp}\nYour Target: Rs ${tx.targetPrice}\n\nTransaction Details:\nType: ${tx.type}\nQty: ${tx.qty}\nBought at: Rs ${tx.price}`;
-            } else if (tx.stopLoss && ltp <= tx.stopLoss) {
-                alertSubject = `📊 Stock Alert: ${tx.symbol} - Stop Loss Hit`;
-                alertMsg = `⚠️ STOP LOSS HIT!\n\nStock: ${tx.symbol}\nCurrent Price: Rs ${ltp}\nYour Stop Loss: Rs ${tx.stopLoss}\n\nTransaction Details:\nType: ${tx.type}\nQty: ${tx.qty}\nBought at: Rs ${tx.price}`;
+            // Target Price Hit (once per day)
+            if (tx.targetPrice && tx.targetPrice > 0 && ltp >= tx.targetPrice) {
+                if (tx.lastTargetAlertDate !== today) {
+                    alertSubject = `📊 Portfolio Alert: ${tx.symbol} - Target Hit (Rs ${ltp})`;
+                    alertMsg = `🎯 TARGET HIT!\n\nStock: ${tx.symbol}\nCurrent Price: Rs ${ltp}\nYour Target Price: Rs ${tx.targetPrice}\n\nTransaction Details:\nType: ${tx.type}\nQty: ${tx.qty}\nPurchase Price: Rs ${tx.price}\nDate: ${today}`;
+                    updates.lastTargetAlertDate = today;
+                    updates.alertTriggered = true;
+                }
+            } 
+            // Stop Loss Hit (once per day)
+            else if (tx.stopLoss && tx.stopLoss > 0 && ltp <= tx.stopLoss) {
+                if (tx.lastSlAlertDate !== today) {
+                    alertSubject = `⚠️ Portfolio Alert: ${tx.symbol} - Stop Loss Hit (Rs ${ltp})`;
+                    alertMsg = `⚠️ STOP LOSS HIT!\n\nStock: ${tx.symbol}\nCurrent Price: Rs ${ltp}\nYour Stop Loss: Rs ${tx.stopLoss}\n\nTransaction Details:\nType: ${tx.type}\nQty: ${tx.qty}\nPurchase Price: Rs ${tx.price}\nDate: ${today}`;
+                    updates.lastSlAlertDate = today;
+                    updates.alertTriggered = true;
+                }
             }
 
             if (alertMsg) {
                 try {
                     await sendEmail(tx.email, alertSubject, alertMsg);
-                    await db.collection('transactions').doc(docSnap.id).update({ alertTriggered: true });
+                    await db.collection('transactions').doc(docSnap.id).update(updates);
+                    txAlertsSent++;
                     console.log(`   ✅ Portfolio alert sent for ${tx.symbol} to ${tx.email}`);
                 } catch (emailErr) {
                     console.error(`   ❌ Failed to send portfolio alert for ${tx.symbol}:`, emailErr.message);
@@ -327,55 +435,71 @@ async function checkAlerts() {
         }
 
         // ---------------------------------------------------------------
-        // PART B: Watchlist alerts (takeProfit + stopLoss on watched stocks)
+        // PART B: Watchlist alerts (Target Buy, Take Profit, Stop Loss)
+        // Sent AT MOST ONCE PER DAY per condition
         // ---------------------------------------------------------------
-        // Fetch watchlist items where at least one alert is still pending
         const wlSnapshot = await db.collection('watchlist').get();
-
         let wlChecked = 0;
+        let wlAlertsSent = 0;
+
         for (const docSnap of wlSnapshot.docs) {
             const wl = docSnap.data();
             const ltp = priceMap[wl.symbol];
-            if (!ltp) continue;
+            if (!ltp || !wl.email) continue;
 
             const updates = {};
 
-            // --- Take Profit alert ---
-            if (wl.takeProfit && wl.takeProfit > 0 && !wl.tpAlertTriggered && ltp >= wl.takeProfit) {
-                const subject = `📊 Watchlist Alert: ${wl.symbol} - Take Profit Hit`;
-                const msg = `🎯 TAKE PROFIT HIT!\n\nStock: ${wl.symbol}\nCurrent Price: Rs ${ltp}\nYour Take Profit: Rs ${wl.takeProfit}\n\nLog in to act on this alert.`;
-                try {
-                    await sendEmail(wl.email, subject, msg);
-                    updates.tpAlertTriggered = true;
-                    console.log(`   ✅ Watchlist TP alert sent for ${wl.symbol} to ${wl.email}`);
-                } catch (emailErr) {
-                    console.error(`   ❌ Failed to send watchlist TP alert for ${wl.symbol}:`, emailErr.message);
+            // 1. Target Buy alert (LTP <= targetBuy) - once per day
+            if (wl.targetBuy && wl.targetBuy > 0 && ltp <= wl.targetBuy) {
+                if (wl.lastBuyAlertDate !== today) {
+                    const subject = `🛒 Watchlist Alert: ${wl.symbol} reached Target Buy (Rs ${ltp})`;
+                    const msg = `🛒 TARGET BUY HIT!\n\nStock: ${wl.symbol}\nCurrent Price: Rs ${ltp}\nYour Target Buy Price: Rs ${wl.targetBuy}\nDate: ${today}\n\nLog in to your portfolio to act on this alert.`;
+                    try {
+                        await sendEmail(wl.email, subject, msg);
+                        updates.lastBuyAlertDate = today;
+                        updates.alertTriggered = true;
+                        updates.lastBuyAlertAt = new Date().toISOString();
+                        wlAlertsSent++;
+                        console.log(`   ✅ Watchlist Buy alert sent for ${wl.symbol} to ${wl.email}`);
+                    } catch (emailErr) {
+                        console.error(`   ❌ Failed to send watchlist Buy alert for ${wl.symbol}:`, emailErr.message);
+                    }
                 }
             }
 
-            // --- Stop Loss alert ---
-            if (wl.stopLoss && wl.stopLoss > 0 && !wl.slAlertTriggered && ltp <= wl.stopLoss) {
-                const subject = `📊 Watchlist Alert: ${wl.symbol} - Stop Loss Hit`;
-                const msg = `⚠️ STOP LOSS HIT!\n\nStock: ${wl.symbol}\nCurrent Price: Rs ${ltp}\nYour Stop Loss: Rs ${wl.stopLoss}\n\nLog in to manage your risk.`;
-                try {
-                    await sendEmail(wl.email, subject, msg);
-                    updates.slAlertTriggered = true;
-                    console.log(`   ✅ Watchlist SL alert sent for ${wl.symbol} to ${wl.email}`);
-                } catch (emailErr) {
-                    console.error(`   ❌ Failed to send watchlist SL alert for ${wl.symbol}:`, emailErr.message);
+            // 2. Take Profit alert (LTP >= takeProfit) - once per day
+            if (wl.takeProfit && wl.takeProfit > 0 && ltp >= wl.takeProfit) {
+                if (wl.lastTpAlertDate !== today) {
+                    const subject = `🎯 Watchlist Alert: ${wl.symbol} hit Take Profit (Rs ${ltp})`;
+                    const msg = `🎯 TAKE PROFIT TARGET HIT!\n\nStock: ${wl.symbol}\nCurrent Price: Rs ${ltp}\nYour Take Profit Target: Rs ${wl.takeProfit}\nDate: ${today}\n\nLog in to your portfolio to secure your profits.`;
+                    try {
+                        await sendEmail(wl.email, subject, msg);
+                        updates.lastTpAlertDate = today;
+                        updates.tpAlertTriggered = true;
+                        updates.lastTpAlertAt = new Date().toISOString();
+                        wlAlertsSent++;
+                        console.log(`   ✅ Watchlist TP alert sent for ${wl.symbol} to ${wl.email}`);
+                    } catch (emailErr) {
+                        console.error(`   ❌ Failed to send watchlist TP alert for ${wl.symbol}:`, emailErr.message);
+                    }
                 }
             }
 
-            // --- Target Buy alert (LTP <= targetBuy) ---
-            if (wl.targetBuy && wl.targetBuy > 0 && !wl.alertTriggered && ltp <= wl.targetBuy) {
-                const subject = `📊 Watchlist Alert: ${wl.symbol} - Target Buy Hit`;
-                const msg = `🛒 TARGET BUY HIT!\n\nStock: ${wl.symbol}\nCurrent Price: Rs ${ltp}\nYour Target Buy: Rs ${wl.targetBuy}\n\nLog in to act on this alert.`;
-                try {
-                    await sendEmail(wl.email, subject, msg);
-                    updates.alertTriggered = true;
-                    console.log(`   ✅ Watchlist Buy alert sent for ${wl.symbol} to ${wl.email}`);
-                } catch (emailErr) {
-                    console.error(`   ❌ Failed to send watchlist Buy alert for ${wl.symbol}:`, emailErr.message);
+            // 3. Stop Loss alert (LTP <= stopLoss) - once per day
+            if (wl.stopLoss && wl.stopLoss > 0 && ltp <= wl.stopLoss) {
+                if (wl.lastSlAlertDate !== today) {
+                    const subject = `⚠️ Watchlist Alert: ${wl.symbol} hit Stop Loss (Rs ${ltp})`;
+                    const msg = `⚠️ STOP LOSS BREACHED!\n\nStock: ${wl.symbol}\nCurrent Price: Rs ${ltp}\nYour Stop Loss Price: Rs ${wl.stopLoss}\nDate: ${today}\n\nLog in to your portfolio to manage your risk.`;
+                    try {
+                        await sendEmail(wl.email, subject, msg);
+                        updates.lastSlAlertDate = today;
+                        updates.slAlertTriggered = true;
+                        updates.lastSlAlertAt = new Date().toISOString();
+                        wlAlertsSent++;
+                        console.log(`   ✅ Watchlist SL alert sent for ${wl.symbol} to ${wl.email}`);
+                    } catch (emailErr) {
+                        console.error(`   ❌ Failed to send watchlist SL alert for ${wl.symbol}:`, emailErr.message);
+                    }
                 }
             }
 
@@ -385,14 +509,24 @@ async function checkAlerts() {
             wlChecked++;
         }
 
-        console.log(`   Checked ${wlChecked} watchlist item(s).`);
+        console.log(`   Checked ${wlChecked} watchlist item(s). Sent ${wlAlertsSent} watchlist alert(s) and ${txAlertsSent} portfolio alert(s).`);
         console.log(`[${new Date().toISOString()}] ✅ Alert check complete.`);
     } catch (error) {
         console.error(`[${new Date().toISOString()}] ❌ Alert checker error:`, error.message);
     }
 }
 
-// Schedule: Run every 5 minutes (cron expression: */5 * * * *)
+// Endpoint to trigger/test alert check on demand
+app.get('/api/run-alert-check', async (req, res) => {
+    try {
+        await checkAlerts();
+        res.status(200).json({ success: true, message: 'Alert check executed successfully' });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// Schedule: Run every 5 minutes 24/7 (cron expression: */5 * * * *)
 cron.schedule('*/5 * * * *', () => {
     checkAlerts();
 });
@@ -403,5 +537,5 @@ checkAlerts();
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Backend running perfectly on port ${PORT}`);
-    console.log(`Background alert checker scheduled to run every 5 minutes.`);
+    console.log(`Background alert checker scheduled to run 24/7 every 5 minutes.`);
 });

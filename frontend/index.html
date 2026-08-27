@@ -334,7 +334,13 @@
                 <div class="glass-card fill-height">
                     <div class="table-controls">
                         <h3>52-Week High / Low Screener</h3>
-                        <div class="controls-right filters">
+                        <div class="controls-right filters" style="flex-wrap: wrap; gap: 0.5rem;">
+                            <!-- Search box -->
+                            <div class="search-box">
+                                <i class="ph ph-magnifying-glass"></i>
+                                <input type="text" id="hl-search-input" placeholder="Search symbol..." style="width: 130px;">
+                            </div>
+                            <!-- Sector filter -->
                             <select id="hl-sector-filter" class="auto-width">
                                 <option value="ALL">All Sectors</option>
                                 <option value="Commercial Banks">Commercial Banks</option>
@@ -350,26 +356,36 @@
                                 <option value="Trading">Trading</option>
                                 <option value="Others">Others</option>
                             </select>
+                            <!-- Filter type + % -->
                             <div class="filter-group">
-                                <span>Filter:</span>
+                                <span>Show:</span>
                                 <select id="hl-type-filter" class="auto-width">
+                                    <option value="ALL">All Stocks</option>
                                     <option value="LOW">Near 52W Low</option>
                                     <option value="HIGH">Near 52W High</option>
                                 </select>
-                                <span>within</span>
-                                <input type="number" id="hl-perc-filter" value="5" min="1" max="100" style="width: 70px;">
-                                <span>%</span>
+                                <span id="hl-perc-label">within</span>
+                                <input type="number" id="hl-perc-filter" value="10" min="1" max="100" style="width: 70px;">
+                                <span id="hl-perc-pct-label">%</span>
                             </div>
+                            <!-- Sort -->
+                            <select id="hl-sort-filter" class="auto-width">
+                                <option value="low-asc">↑ Nearest Low</option>
+                                <option value="high-asc">↑ Nearest High</option>
+                                <option value="symbol-asc">A-Z Symbol</option>
+                            </select>
                             <button id="apply-hl-filter" class="primary-btn btn-small">Apply</button>
+                            <button id="refresh-hl-btn" class="secondary-btn btn-small"><i class="ph ph-arrows-clockwise"></i></button>
                         </div>
                     </div>
+                    <p id="hl-result-count" class="text-sm text-secondary" style="margin: 0.25rem 0 0.5rem;"></p>
                     <div class="table-container">
                         <table id="hl-table">
                             <thead>
                                 <tr>
                                     <th>Symbol</th>
                                     <th>Sector</th>
-                                    <th>LTP</th>
+                                    <th>LTP (Rs)</th>
                                     <th>52W High</th>
                                     <th>52W Low</th>
                                     <th>% From Low</th>

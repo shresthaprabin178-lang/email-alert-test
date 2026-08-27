@@ -1236,7 +1236,7 @@ function renderWatchlist() {
         const hasSl      = data.stopLoss && data.stopLoss > 0;
         const isSlHit    = hasSl && ltp > 0 && ltp <= data.stopLoss;
 
-        // --- Fire in-browser toast + email for fresh hits (once per session) ---
+        // --- Fire in-browser toast for fresh hits (once per session for UI feedback) ---
         const sessionKeyBuy = `${data.id}_buy`;
         const sessionKeyTp  = `${data.id}_tp`;
         const sessionKeySl  = `${data.id}_sl`;
@@ -1248,11 +1248,6 @@ function renderWatchlist() {
                 `LTP Rs ${ltp} has reached your target buy price of Rs ${data.targetBuy}. Time to buy!`,
                 'success'
             );
-            sendWatchlistEmailAlert(
-                currentUser.email,
-                `📊 Watchlist Alert: ${data.symbol} - Target Buy Hit`,
-                `🛒 TARGET BUY HIT!\n\nStock: ${data.symbol}\nCurrent Price: Rs ${ltp}\nYour Target Buy: Rs ${data.targetBuy}\n\nLog in to act on this alert.`
-            );
         }
 
         if (isTpHit && !data.tpAlertTriggered && !wlAlertsShownThisSession.has(sessionKeyTp)) {
@@ -1262,11 +1257,6 @@ function renderWatchlist() {
                 `LTP Rs ${ltp} has hit your take profit target of Rs ${data.takeProfit}. Consider selling!`,
                 'success'
             );
-            sendWatchlistEmailAlert(
-                currentUser.email,
-                `📊 Watchlist Alert: ${data.symbol} - Take Profit Hit`,
-                `🎯 TAKE PROFIT HIT!\n\nStock: ${data.symbol}\nCurrent Price: Rs ${ltp}\nYour Take Profit: Rs ${data.takeProfit}\n\nLog in to act on this alert.`
-            );
         }
 
         if (isSlHit && !data.slAlertTriggered && !wlAlertsShownThisSession.has(sessionKeySl)) {
@@ -1275,11 +1265,6 @@ function renderWatchlist() {
                 `⚠️ Stop Loss Hit: ${data.symbol}`,
                 `LTP Rs ${ltp} has breached your stop loss of Rs ${data.stopLoss}. Consider cutting losses!`,
                 'danger'
-            );
-            sendWatchlistEmailAlert(
-                currentUser.email,
-                `📊 Watchlist Alert: ${data.symbol} - Stop Loss Hit`,
-                `⚠️ STOP LOSS HIT!\n\nStock: ${data.symbol}\nCurrent Price: Rs ${ltp}\nYour Stop Loss: Rs ${data.stopLoss}\n\nLog in to manage your risk.`
             );
         }
 
@@ -1429,27 +1414,76 @@ function applyHlFilter() {
     if (hlMarketData.length === 0) return;
     const sector = document.getElementById('hl-sector-filter').value;
     const type = document.getElementById('hl-type-filter').value;
-    const perc = parseFloat(document.getElementById('hl-perc-filter').value);
+    const perc = parseFloat(document.getElementById('hl-perc-filter').value) || 10;
+    const sortBy = document.getElementById('hl-sort-filter').value;
+    const searchQuery = (document.getElementById('hl-search-input').value || '').trim().toUpperCase();
 
     hlTableBody.innerHTML = '';
-    
-    const filtered = hlMarketData.filter(stock => {
+
+    // Show/hide the % input based on filter type
+    const percLabel = document.getElementById('hl-perc-label');
+    const percInput = document.getElementById('hl-perc-filter');
+    const percPctLabel = document.getElementById('hl-perc-pct-label');
+    if (type === 'ALL') {
+        percLabel.style.display = 'none';
+        percInput.style.display = 'none';
+        percPctLabel.style.display = 'none';
+    } else {
+        percLabel.style.display = '';
+        percInput.style.display = '';
+        percPctLabel.style.display = '';
+    }
+
+    let filtered = hlMarketData.filter(stock => {
+        // Sector filter
         if (sector !== 'ALL' && stock.sector !== sector) return false;
-        
+
+        // Symbol search
+        if (searchQuery && !stock.symbol.toUpperCase().startsWith(searchQuery)) return false;
+
         const ltp = parseFloat(stock.ltp.replace(/,/g, ''));
         const high = parseFloat(stock.high52.replace(/,/g, ''));
         const low = parseFloat(stock.low52.replace(/,/g, ''));
-        
-        if (isNaN(ltp) || isNaN(high) || isNaN(low)) return false;
+
+        if (isNaN(ltp) || isNaN(high) || isNaN(low) || low === 0 || high === 0) return false;
 
         if (type === 'LOW') {
             const percFromLow = ((ltp - low) / low) * 100;
             return percFromLow <= perc;
-        } else {
+        } else if (type === 'HIGH') {
             const percFromHigh = ((high - ltp) / high) * 100;
             return percFromHigh <= perc;
         }
+        return true; // ALL
     });
+
+    // Sort
+    filtered.sort((a, b) => {
+        const ltpA = parseFloat(a.ltp.replace(/,/g, ''));
+        const ltpB = parseFloat(b.ltp.replace(/,/g, ''));
+        const highA = parseFloat(a.high52.replace(/,/g, ''));
+        const highB = parseFloat(b.high52.replace(/,/g, ''));
+        const lowA  = parseFloat(a.low52.replace(/,/g, ''));
+        const lowB  = parseFloat(b.low52.replace(/,/g, ''));
+
+        if (sortBy === 'low-asc') {
+            const percA = lowA > 0 ? ((ltpA - lowA) / lowA) * 100 : 999;
+            const percB = lowB > 0 ? ((ltpB - lowB) / lowB) * 100 : 999;
+            return percA - percB;
+        } else if (sortBy === 'high-asc') {
+            const percA = highA > 0 ? ((highA - ltpA) / highA) * 100 : 999;
+            const percB = highB > 0 ? ((highB - ltpB) / highB) * 100 : 999;
+            return percA - percB;
+        } else { // symbol-asc
+            return a.symbol.localeCompare(b.symbol);
+        }
+    });
+
+    // Result count
+    const countEl = document.getElementById('hl-result-count');
+    if (countEl) {
+        countEl.textContent = `Showing ${filtered.length} of ${hlMarketData.length} stocks`;
+    }
 
     if (filtered.length === 0) {
         hlTableBody.innerHTML = '<tr><td colspan="7" class="text-center">No stocks match this filter.</td></tr>';
@@ -1457,28 +1491,54 @@ function applyHlFilter() {
     }
 
     filtered.forEach(stock => {
-        const ltp = parseFloat(stock.ltp.replace(/,/g, ''));
+        const ltp  = parseFloat(stock.ltp.replace(/,/g, ''));
         const high = parseFloat(stock.high52.replace(/,/g, ''));
-        const low = parseFloat(stock.low52.replace(/,/g, ''));
-        
-        const percFromLow = ((ltp - low) / low) * 100;
-        const percFromHigh = ((high - ltp) / high) * 100;
+        const low  = parseFloat(stock.low52.replace(/,/g, ''));
+
+        const percFromLow  = low  > 0 ? ((ltp - low)  / low)  * 100 : 0;
+        const percFromHigh = high > 0 ? ((high - ltp)  / high) * 100 : 0;
+
+        // Color-coded proximity badges
+        const lowClass  = percFromLow  <= 5  ? 'negative' : percFromLow  <= 15 ? 'accent' : '';
+        const highClass = percFromHigh <= 5  ? 'positive' : percFromHigh <= 15 ? 'accent' : '';
 
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td><strong>${stock.symbol}</strong></td>
-            <td>${stock.sector || 'N/A'}</td>
+            <td><span class="badge-sector">${stock.sector || 'N/A'}</span></td>
             <td>Rs ${stock.ltp}</td>
-            <td>Rs ${stock.high52}</td>
-            <td>Rs ${stock.low52}</td>
-            <td class="${percFromLow <= 5 ? 'negative' : ''}">${percFromLow.toFixed(2)}%</td>
-            <td class="${percFromHigh <= 5 ? 'positive' : ''}">${percFromHigh.toFixed(2)}%</td>
+            <td class="positive">Rs ${stock.high52}</td>
+            <td class="negative">Rs ${stock.low52}</td>
+            <td class="${lowClass}">${percFromLow.toFixed(2)}%</td>
+            <td class="${highClass}">${percFromHigh.toFixed(2)}%</td>
         `;
         hlTableBody.appendChild(tr);
     });
 }
 
 document.getElementById('apply-hl-filter').addEventListener('click', applyHlFilter);
+
+document.getElementById('refresh-hl-btn').addEventListener('click', () => {
+    hlMarketData = [];
+    fetch52WeekData();
+});
+
+// Show/hide % inputs dynamically when type filter changes
+document.getElementById('hl-type-filter').addEventListener('change', () => {
+    const type = document.getElementById('hl-type-filter').value;
+    const percLabel  = document.getElementById('hl-perc-label');
+    const percInput  = document.getElementById('hl-perc-filter');
+    const percPctLbl = document.getElementById('hl-perc-pct-label');
+    const hide = type === 'ALL';
+    percLabel.style.display  = hide ? 'none' : '';
+    percInput.style.display  = hide ? 'none' : '';
+    percPctLbl.style.display = hide ? 'none' : '';
+});
+
+// Live search re-applies filter on each keystroke
+document.getElementById('hl-search-input').addEventListener('input', () => {
+    if (hlMarketData.length > 0) applyHlFilter();
+});
 
 // --- Reset Portfolio ---
 async function resetPortfolio() {
