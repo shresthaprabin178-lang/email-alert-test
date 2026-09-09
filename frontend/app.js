@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-import { getFirestore, collection, addDoc, query, where, deleteDoc, doc, onSnapshot, getDoc, setDoc, updateDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { getFirestore, collection, addDoc, query, where, deleteDoc, doc, onSnapshot, getDoc, setDoc, updateDoc, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyCCzyvBtibx9ag-EU6SUsKRHtBiwcnaFTE",
@@ -623,7 +623,7 @@ function setupPortfolioControls() {
         });
     }
 }
-setupPortfolioControls();
+// setupPortfolioControls() is called once via DOMContentLoaded above
 
 function updatePortfolio() {
     const holdingsContainer = document.getElementById('portfolio-holdings-container');
@@ -1572,7 +1572,7 @@ async function resetPortfolio() {
     }
 }
 
-document.getElementById('reset-portfolio-btn').addEventListener('click', resetPortfolio);
+// Note: reset-portfolio-btn is already wired inside setupPortfolioControls() above
 
 // ==========================================================================
 // --- 5th TAB: SWING TRADING TECHNICAL SETUP MODULE ---
@@ -1676,16 +1676,24 @@ async function getHistoricalDataForSymbol(symbol, currentLtp, currentVol) {
 }
 
 async function seedDailyHistoryToFirestore(symbol, candles) {
-    for (const candle of candles) {
-        const docId = `${symbol}_${candle.date}`;
-        try {
-            await setDoc(doc(db, "daily_history", docId), {
+    // Use writeBatch to send up to 500 writes per round-trip instead of one-by-one
+    const BATCH_SIZE = 500;
+    for (let i = 0; i < candles.length; i += BATCH_SIZE) {
+        const chunk = candles.slice(i, i + BATCH_SIZE);
+        const batch = writeBatch(db);
+        chunk.forEach(candle => {
+            const docId = `${symbol}_${candle.date}`;
+            const ref = doc(db, "daily_history", docId);
+            batch.set(ref, {
                 symbol: symbol,
                 date: candle.date,
                 close: candle.close,
                 volume: candle.volume,
                 seededAt: new Date()
             }, { merge: true });
+        });
+        try {
+            await batch.commit();
         } catch (e) {
             // Ignore error if permissions restricted
         }
@@ -1823,14 +1831,23 @@ async function fetchSetupData() {
     syncDailyHistory(liveMarketData).catch(e => console.warn("Background sync error:", e));
 
     setupEvaluatedData = [];
-    const evaluationPromises = liveMarketData.map(async (stock) => {
-        const currentLtp = parseFloat(stock.ltp.replace(/,/g, '')) || 0;
-        const currentVol = parseFloat((stock.volume || '0').replace(/,/g, '')) || 0;
-        const candles = await getHistoricalDataForSymbol(stock.symbol, currentLtp, currentVol);
-        return evaluateStockSetup(stock, candles);
-    });
 
-    setupEvaluatedData = await Promise.all(evaluationPromises);
+    // Process stocks in chunks of 10 to avoid firing 300 simultaneous Firestore reads
+    // which would exhaust Firebase free-tier quota in minutes.
+    const CHUNK_SIZE = 10;
+    for (let i = 0; i < liveMarketData.length; i += CHUNK_SIZE) {
+        const chunk = liveMarketData.slice(i, i + CHUNK_SIZE);
+        const chunkResults = await Promise.all(
+            chunk.map(async (stock) => {
+                const currentLtp = parseFloat(stock.ltp.replace(/,/g, '')) || 0;
+                const currentVol = parseFloat((stock.volume || '0').replace(/,/g, '')) || 0;
+                const candles = await getHistoricalDataForSymbol(stock.symbol, currentLtp, currentVol);
+                return evaluateStockSetup(stock, candles);
+            })
+        );
+        setupEvaluatedData.push(...chunkResults);
+    }
+
     renderSetupTable();
 }
 

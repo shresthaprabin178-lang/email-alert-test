@@ -46,6 +46,71 @@ app.use(express.json());
 // Serve frontend static files
 app.use(express.static(path.join(__dirname, '../frontend')));
 
+// --- Reusable Nodemailer SMTP Transporter (created once at startup, not per call) ---
+let smtpTransporter = null;
+if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    smtpTransporter = nodemailer.createTransport({
+        service: 'gmail',
+        pool: true,          // keeps SMTP connection alive for reuse
+        maxConnections: 3,
+        auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS
+        }
+    });
+}
+
+// --- In-Memory TTL Cache ---
+const cache = {
+    _store: {},
+    set(key, value, ttlMs) {
+        this._store[key] = { value, expiresAt: Date.now() + ttlMs };
+    },
+    get(key) {
+        const entry = this._store[key];
+        if (!entry) return null;
+        if (Date.now() > entry.expiresAt) {
+            delete this._store[key];
+            return null;
+        }
+        return entry.value;
+    },
+    invalidate(key) {
+        delete this._store[key];
+    }
+};
+
+const CACHE_TTL_LIVE   = 60 * 1000;          // 60 seconds for live prices
+const CACHE_TTL_52WEEK = 15 * 60 * 1000;     // 15 minutes for 52-week data
+
+// --- Simple In-Memory Rate Limiter for /api/send-alert ---
+const rateLimitMap = new Map(); // ip -> { count, resetAt }
+function rateLimit(req, res, next) {
+    const ip = req.ip || req.connection.remoteAddress;
+    const now = Date.now();
+    const window = 60 * 1000; // 1 minute
+    const maxReq = 5;
+
+    let record = rateLimitMap.get(ip);
+    if (!record || now > record.resetAt) {
+        record = { count: 0, resetAt: now + window };
+        rateLimitMap.set(ip, record);
+    }
+    record.count++;
+    if (record.count > maxReq) {
+        return res.status(429).json({ success: false, error: 'Too many requests. Please wait.' });
+    }
+    next();
+}
+
+// Periodically clean up expired rate limit entries to prevent memory leaks
+setInterval(() => {
+    const now = Date.now();
+    rateLimitMap.forEach((record, ip) => {
+        if (now > record.resetAt) rateLimitMap.delete(ip);
+    });
+}, 5 * 60 * 1000);
+
 // --- Email Sender with Dual Transport (Resend + Gmail Nodemailer Fallback) ---
 async function sendEmail(to, subject, text) {
     const resendKey = process.env.RESEND_API_KEY;
@@ -71,16 +136,9 @@ async function sendEmail(to, subject, text) {
         }
     }
 
-    // Nodemailer fallback (using Gmail App password or custom SMTP)
-    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-        const transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-                user: process.env.EMAIL_USER,
-                pass: process.env.EMAIL_PASS
-            }
-        });
-        return await transporter.sendMail({
+    // Nodemailer fallback — reuse module-level pooled transporter
+    if (smtpTransporter) {
+        return await smtpTransporter.sendMail({
             from: process.env.SENDER_EMAIL || `"Stock Alerts" <${process.env.EMAIL_USER}>`,
             to: to,
             subject: subject,
@@ -146,10 +204,15 @@ app.get('/', (req, res) => {
     res.send('Backend is running successfully!');
 });
 
-// Web Scraper Endpoint for Live Prices (used by frontend)
+// Web Scraper Endpoint for Live Prices (used by frontend) — with 60s TTL cache
 app.get('/api/live-prices', async (req, res) => {
     try {
+        const cached = cache.get('live-prices');
+        if (cached) {
+            return res.status(200).json({ success: true, data: cached, cached: true });
+        }
         const stocks = await scrapeLivePrices();
+        cache.set('live-prices', stocks, CACHE_TTL_LIVE);
         res.status(200).json({ success: true, data: stocks });
     } catch (error) {
         console.error("Scraping error:", error.message);
@@ -324,6 +387,10 @@ const SECTOR_MAP = {
 
 app.get('/api/52week-prices', async (req, res) => {
     try {
+        const cached = cache.get('52week-prices');
+        if (cached) {
+            return res.status(200).json({ success: true, count: cached.length, data: cached, cached: true });
+        }
         const stocks = await scrape52WeekData();
         if (stocks.length === 0) {
             return res.status(503).json({ success: false, error: 'No data fetched. Market may be closed or site unavailable.' });
@@ -333,6 +400,7 @@ app.get('/api/52week-prices', async (req, res) => {
             ...s,
             sector: SECTOR_MAP[s.symbol] || 'Others'
         }));
+        cache.set('52week-prices', data52, CACHE_TTL_52WEEK);
         console.log(`[52W] Fetched ${data52.length} stocks from Sharesansar.`);
         res.status(200).json({ success: true, count: data52.length, data: data52 });
     } catch (error) {
@@ -341,8 +409,8 @@ app.get('/api/52week-prices', async (req, res) => {
     }
 });
 
-// Trigger an alert manually
-app.post('/api/send-alert', async (req, res) => {
+// Trigger an alert manually — rate-limited to 5 requests/min per IP
+app.post('/api/send-alert', rateLimit, async (req, res) => {
     const { email, message, subject } = req.body;
 
     try {
@@ -371,13 +439,43 @@ function getNepalDateString() {
 // Runs automatically even when the user's laptop is completely turned off.
 // Ensures notifications are sent AT MOST ONCE PER DAY per stock condition.
 // =========================================================
+// --- NEPSE Market Hours Guard ---
+// NEPSE trades Sun–Thu, 11:00 AM – 3:00 PM (Nepal Standard Time, UTC+5:45)
+// Returns true if current Nepal time is within trading hours
+function isNepseMarketOpen() {
+    const now = new Date();
+    const nepalOffsetMs = (5 * 60 + 45) * 60 * 1000;
+    const nepalNow = new Date(now.getTime() + nepalOffsetMs);
+
+    const dayOfWeek = nepalNow.getUTCDay(); // 0=Sun, 1=Mon, ..., 4=Thu, 5=Fri, 6=Sat
+    const isTradingDay = dayOfWeek >= 0 && dayOfWeek <= 4; // Sunday (0) to Thursday (4)
+
+    const hours = nepalNow.getUTCHours();
+    const minutes = nepalNow.getUTCMinutes();
+    const timeInMinutes = hours * 60 + minutes;
+
+    const marketOpen  = 11 * 60;       // 11:00 AM
+    const marketClose = 15 * 60 + 5;   // 3:05 PM (small buffer after close for final prices)
+
+    return isTradingDay && timeInMinutes >= marketOpen && timeInMinutes <= marketClose;
+}
+
 async function checkAlerts() {
     const today = getNepalDateString();
     console.log(`[${new Date().toISOString()}] 🔄 Background alert checker running (Date: ${today})...`);
 
     try {
-        // 1. Scrape live prices
-        const stocks = await scrapeLivePrices();
+        // 1. Use cached live prices if available to avoid hammering the scraper;
+        //    always refresh during market hours so data is current.
+        let cachedPrices = cache.get('live-prices');
+        let stocks;
+        if (cachedPrices) {
+            stocks = cachedPrices;
+            console.log(`   Using cached live prices (${stocks.length} stocks).`);
+        } else {
+            stocks = await scrapeLivePrices();
+            cache.set('live-prices', stocks, CACHE_TTL_LIVE);
+        }
 
         // Build a quick lookup map: { "NABIL": 1234.56, ... }
         const priceMap = {};
@@ -386,13 +484,16 @@ async function checkAlerts() {
             if (!isNaN(price)) priceMap[s.symbol] = price;
         });
 
-        console.log(`   Scraped ${Object.keys(priceMap).length} stock prices.`);
+        console.log(`   Scraped/cached ${Object.keys(priceMap).length} stock prices.`);
 
         // ---------------------------------------------------------------
         // PART A: Portfolio / Transaction alerts (target price + stop loss)
         // ---------------------------------------------------------------
         const txSnapshot = await db.collection('transactions').get();
         let txAlertsSent = 0;
+
+        // Collect all alerts to send concurrently
+        const txAlertTasks = [];
 
         for (const docSnap of txSnapshot.docs) {
             const tx = docSnap.data();
@@ -411,7 +512,7 @@ async function checkAlerts() {
                     updates.lastTargetAlertDate = today;
                     updates.alertTriggered = true;
                 }
-            } 
+            }
             // Stop Loss Hit (once per day)
             else if (tx.stopLoss && tx.stopLoss > 0 && ltp <= tx.stopLoss) {
                 if (tx.lastSlAlertDate !== today) {
@@ -423,16 +524,24 @@ async function checkAlerts() {
             }
 
             if (alertMsg) {
-                try {
-                    await sendEmail(tx.email, alertSubject, alertMsg);
-                    await db.collection('transactions').doc(docSnap.id).update(updates);
-                    txAlertsSent++;
-                    console.log(`   ✅ Portfolio alert sent for ${tx.symbol} to ${tx.email}`);
-                } catch (emailErr) {
-                    console.error(`   ❌ Failed to send portfolio alert for ${tx.symbol}:`, emailErr.message);
-                }
+                txAlertTasks.push({ docId: docSnap.id, email: tx.email, subject: alertSubject, msg: alertMsg, symbol: tx.symbol, updates });
             }
         }
+
+        // Send all portfolio alerts concurrently
+        const txResults = await Promise.allSettled(
+            txAlertTasks.map(async task => {
+                await sendEmail(task.email, task.subject, task.msg);
+                await db.collection('transactions').doc(task.docId).update(task.updates);
+                console.log(`   ✅ Portfolio alert sent for ${task.symbol} to ${task.email}`);
+            })
+        );
+        txResults.forEach((result, i) => {
+            if (result.status === 'rejected') {
+                console.error(`   ❌ Failed to send portfolio alert for ${txAlertTasks[i].symbol}:`, result.reason?.message);
+            }
+        });
+        txAlertsSent = txResults.filter(r => r.status === 'fulfilled').length;
 
         // ---------------------------------------------------------------
         // PART B: Watchlist alerts (Target Buy, Take Profit, Stop Loss)
@@ -441,6 +550,10 @@ async function checkAlerts() {
         const wlSnapshot = await db.collection('watchlist').get();
         let wlChecked = 0;
         let wlAlertsSent = 0;
+
+        // Collect watchlist alert tasks for concurrent sending
+        const wlAlertTasks = [];
+        const wlUpdateMap = new Map(); // docId -> updates object
 
         for (const docSnap of wlSnapshot.docs) {
             const wl = docSnap.data();
@@ -452,62 +565,71 @@ async function checkAlerts() {
             // 1. Target Buy alert (LTP <= targetBuy) - once per day
             if (wl.targetBuy && wl.targetBuy > 0 && ltp <= wl.targetBuy) {
                 if (wl.lastBuyAlertDate !== today) {
-                    const subject = `🛒 Watchlist Alert: ${wl.symbol} reached Target Buy (Rs ${ltp})`;
-                    const msg = `🛒 TARGET BUY HIT!\n\nStock: ${wl.symbol}\nCurrent Price: Rs ${ltp}\nYour Target Buy Price: Rs ${wl.targetBuy}\nDate: ${today}\n\nLog in to your portfolio to act on this alert.`;
-                    try {
-                        await sendEmail(wl.email, subject, msg);
-                        updates.lastBuyAlertDate = today;
-                        updates.alertTriggered = true;
-                        updates.lastBuyAlertAt = new Date().toISOString();
-                        wlAlertsSent++;
-                        console.log(`   ✅ Watchlist Buy alert sent for ${wl.symbol} to ${wl.email}`);
-                    } catch (emailErr) {
-                        console.error(`   ❌ Failed to send watchlist Buy alert for ${wl.symbol}:`, emailErr.message);
-                    }
+                    wlAlertTasks.push({
+                        docId: docSnap.id, symbol: wl.symbol, email: wl.email,
+                        subject: `🛒 Watchlist Alert: ${wl.symbol} reached Target Buy (Rs ${ltp})`,
+                        msg: `🛒 TARGET BUY HIT!\n\nStock: ${wl.symbol}\nCurrent Price: Rs ${ltp}\nYour Target Buy Price: Rs ${wl.targetBuy}\nDate: ${today}\n\nLog in to your portfolio to act on this alert.`,
+                        updateKey: docSnap.id,
+                        partialUpdates: { lastBuyAlertDate: today, alertTriggered: true, lastBuyAlertAt: new Date().toISOString() }
+                    });
+                    Object.assign(updates, { lastBuyAlertDate: today, alertTriggered: true, lastBuyAlertAt: new Date().toISOString() });
                 }
             }
 
             // 2. Take Profit alert (LTP >= takeProfit) - once per day
             if (wl.takeProfit && wl.takeProfit > 0 && ltp >= wl.takeProfit) {
                 if (wl.lastTpAlertDate !== today) {
-                    const subject = `🎯 Watchlist Alert: ${wl.symbol} hit Take Profit (Rs ${ltp})`;
-                    const msg = `🎯 TAKE PROFIT TARGET HIT!\n\nStock: ${wl.symbol}\nCurrent Price: Rs ${ltp}\nYour Take Profit Target: Rs ${wl.takeProfit}\nDate: ${today}\n\nLog in to your portfolio to secure your profits.`;
-                    try {
-                        await sendEmail(wl.email, subject, msg);
-                        updates.lastTpAlertDate = today;
-                        updates.tpAlertTriggered = true;
-                        updates.lastTpAlertAt = new Date().toISOString();
-                        wlAlertsSent++;
-                        console.log(`   ✅ Watchlist TP alert sent for ${wl.symbol} to ${wl.email}`);
-                    } catch (emailErr) {
-                        console.error(`   ❌ Failed to send watchlist TP alert for ${wl.symbol}:`, emailErr.message);
-                    }
+                    wlAlertTasks.push({
+                        docId: docSnap.id, symbol: wl.symbol, email: wl.email,
+                        subject: `🎯 Watchlist Alert: ${wl.symbol} hit Take Profit (Rs ${ltp})`,
+                        msg: `🎯 TAKE PROFIT TARGET HIT!\n\nStock: ${wl.symbol}\nCurrent Price: Rs ${ltp}\nYour Take Profit Target: Rs ${wl.takeProfit}\nDate: ${today}\n\nLog in to your portfolio to secure your profits.`,
+                        updateKey: docSnap.id,
+                        partialUpdates: { lastTpAlertDate: today, tpAlertTriggered: true, lastTpAlertAt: new Date().toISOString() }
+                    });
+                    Object.assign(updates, { lastTpAlertDate: today, tpAlertTriggered: true, lastTpAlertAt: new Date().toISOString() });
                 }
             }
 
             // 3. Stop Loss alert (LTP <= stopLoss) - once per day
             if (wl.stopLoss && wl.stopLoss > 0 && ltp <= wl.stopLoss) {
                 if (wl.lastSlAlertDate !== today) {
-                    const subject = `⚠️ Watchlist Alert: ${wl.symbol} hit Stop Loss (Rs ${ltp})`;
-                    const msg = `⚠️ STOP LOSS BREACHED!\n\nStock: ${wl.symbol}\nCurrent Price: Rs ${ltp}\nYour Stop Loss Price: Rs ${wl.stopLoss}\nDate: ${today}\n\nLog in to your portfolio to manage your risk.`;
-                    try {
-                        await sendEmail(wl.email, subject, msg);
-                        updates.lastSlAlertDate = today;
-                        updates.slAlertTriggered = true;
-                        updates.lastSlAlertAt = new Date().toISOString();
-                        wlAlertsSent++;
-                        console.log(`   ✅ Watchlist SL alert sent for ${wl.symbol} to ${wl.email}`);
-                    } catch (emailErr) {
-                        console.error(`   ❌ Failed to send watchlist SL alert for ${wl.symbol}:`, emailErr.message);
-                    }
+                    wlAlertTasks.push({
+                        docId: docSnap.id, symbol: wl.symbol, email: wl.email,
+                        subject: `⚠️ Watchlist Alert: ${wl.symbol} hit Stop Loss (Rs ${ltp})`,
+                        msg: `⚠️ STOP LOSS BREACHED!\n\nStock: ${wl.symbol}\nCurrent Price: Rs ${ltp}\nYour Stop Loss Price: Rs ${wl.stopLoss}\nDate: ${today}\n\nLog in to your portfolio to manage your risk.`,
+                        updateKey: docSnap.id,
+                        partialUpdates: { lastSlAlertDate: today, slAlertTriggered: true, lastSlAlertAt: new Date().toISOString() }
+                    });
+                    Object.assign(updates, { lastSlAlertDate: today, slAlertTriggered: true, lastSlAlertAt: new Date().toISOString() });
                 }
             }
 
             if (Object.keys(updates).length > 0) {
-                await db.collection('watchlist').doc(docSnap.id).update(updates);
+                wlUpdateMap.set(docSnap.id, updates);
             }
             wlChecked++;
         }
+
+        // Send all watchlist emails concurrently
+        const wlResults = await Promise.allSettled(
+            wlAlertTasks.map(async task => {
+                await sendEmail(task.email, task.subject, task.msg);
+                console.log(`   ✅ Watchlist alert sent for ${task.symbol} to ${task.email}`);
+            })
+        );
+        wlResults.forEach((result, i) => {
+            if (result.status === 'rejected') {
+                console.error(`   ❌ Failed to send watchlist alert for ${wlAlertTasks[i].symbol}:`, result.reason?.message);
+            }
+        });
+        wlAlertsSent = wlResults.filter(r => r.status === 'fulfilled').length;
+
+        // Batch Firestore updates for watchlist (all successful alerts at once)
+        const wlUpdatePromises = [];
+        wlUpdateMap.forEach((updates, docId) => {
+            wlUpdatePromises.push(db.collection('watchlist').doc(docId).update(updates));
+        });
+        if (wlUpdatePromises.length > 0) await Promise.allSettled(wlUpdatePromises);
 
         console.log(`   Checked ${wlChecked} watchlist item(s). Sent ${wlAlertsSent} watchlist alert(s) and ${txAlertsSent} portfolio alert(s).`);
         console.log(`[${new Date().toISOString()}] ✅ Alert check complete.`);
@@ -526,9 +648,15 @@ app.get('/api/run-alert-check', async (req, res) => {
     }
 });
 
-// Schedule: Run every 5 minutes 24/7 (cron expression: */5 * * * *)
+// Schedule: Run every 5 minutes but ONLY during NEPSE trading hours (Sun–Thu 11:00–15:05 NST)
+// Off-hours runs are skipped to avoid unnecessary scraping (saves server resources & prevents IP bans)
 cron.schedule('*/5 * * * *', () => {
-    checkAlerts();
+    if (isNepseMarketOpen()) {
+        checkAlerts();
+    } else {
+        const now = new Date();
+        console.log(`[${now.toISOString()}] ⏸ Market closed — alert check skipped.`);
+    }
 });
 
 // Also run once immediately on server startup

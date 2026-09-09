@@ -36,15 +36,25 @@ async function getLivePrices() {
     return stocks;
 }
 
+// Helper to get Nepal date string (UTC+5:45) e.g., "2026-08-27"
+function getNepalDateString() {
+    const now = new Date();
+    const nepalOffsetMs = (5 * 60 + 45) * 60 * 1000;
+    const nepalDate = new Date(now.getTime() + nepalOffsetMs);
+    return nepalDate.toISOString().split('T')[0];
+}
+
 // CRON JOB: Fires every 5 minutes
 exports.sendScheduledAlert = onSchedule("every 5 minutes", async (event) => {
   logger.log("Cron wake-up: Checking stock alerts...");
+  const today = getNepalDateString();
 
   try {
       // 1. Get Live Prices
       const livePrices = await getLivePrices();
       
       // 2. Get active transactions with targets/stop-losses from Firestore
+      //    Only fetch docs where alerts have NOT been triggered today (date-based)
       const snapshot = await db.collection('transactions')
           .where('alertTriggered', '==', false)
           .get();
@@ -54,7 +64,7 @@ exports.sendScheduledAlert = onSchedule("every 5 minutes", async (event) => {
           return;
       }
 
-      // 3. Check conditions
+      // 3. Check conditions using date-based once-per-day logic (matches backend server.js)
       for (const doc of snapshot.docs) {
           const tx = doc.data();
           const ltp = livePrices[tx.symbol];
@@ -62,11 +72,21 @@ exports.sendScheduledAlert = onSchedule("every 5 minutes", async (event) => {
           if (!ltp) continue;
           
           let alertMsg = null;
+          const updates = {};
           
           if (tx.targetPrice && ltp >= tx.targetPrice) {
-              alertMsg = `🎯 TARGET HIT: ${tx.symbol} is currently at Rs ${ltp} (Target: Rs ${tx.targetPrice})`;
+              // Only alert once per day — same logic as backend
+              if (tx.lastTargetAlertDate !== today) {
+                  alertMsg = `🎯 TARGET HIT: ${tx.symbol} is currently at Rs ${ltp} (Target: Rs ${tx.targetPrice})`;
+                  updates.lastTargetAlertDate = today;
+                  updates.alertTriggered = true;
+              }
           } else if (tx.stopLoss && ltp <= tx.stopLoss) {
-              alertMsg = `⚠️ STOP LOSS HIT: ${tx.symbol} is currently at Rs ${ltp} (Stop Loss: Rs ${tx.stopLoss})`;
+              if (tx.lastSlAlertDate !== today) {
+                  alertMsg = `⚠️ STOP LOSS HIT: ${tx.symbol} is currently at Rs ${ltp} (Stop Loss: Rs ${tx.stopLoss})`;
+                  updates.lastSlAlertDate = today;
+                  updates.alertTriggered = true;
+              }
           }
           
           if (alertMsg) {
@@ -78,10 +98,8 @@ exports.sendScheduledAlert = onSchedule("every 5 minutes", async (event) => {
                   text: `${alertMsg}\n\nTransaction Details:\nType: ${tx.type}\nQty: ${tx.qty}\nBought at: Rs ${tx.price}`
               });
               
-              // Mark as triggered so we don't spam
-              await db.collection('transactions').doc(doc.id).update({
-                  alertTriggered: true
-              });
+              // Mark with date so we don't spam (same schema as backend)
+              await db.collection('transactions').doc(doc.id).update(updates);
               
               logger.log(`Alert sent for ${tx.symbol} to ${tx.email}`);
           }
