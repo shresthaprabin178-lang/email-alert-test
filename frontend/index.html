@@ -448,15 +448,18 @@
                 <div class="glass-card fill-height">
                     <div class="table-controls">
                         <div>
-                            <h3>NEPSE Stocks & 3-Year Historical Data</h3>
+                            <div style="display:flex; align-items:center; gap:0.6rem;">
+                                <h3 style="margin:0;">NEPSE Listed Stocks Directory</h3>
+                                <span id="stocks-total-count" class="badge" style="font-size:0.75rem;">Loading...</span>
+                            </div>
                             <p class="text-sm text-secondary" style="margin-top: 0.25rem;">
-                                Listed NEPSE stocks with full 3-year historical prices, charts, and Firebase records.
+                                Complete active NEPSE listed companies with live prices, sectors, and 3-year historical charts.
                             </p>
                         </div>
                         <div class="controls-right filters" style="flex-wrap: wrap; gap: 0.5rem;">
                             <div class="search-box">
                                 <i class="ph ph-magnifying-glass"></i>
-                                <input type="text" id="stocks-search-input" placeholder="Search Symbol...">
+                                <input type="text" id="stocks-search-input" placeholder="Search Symbol or Sector...">
                             </div>
                             <div class="direct-lookup-box" style="display:flex; gap:0.4rem; align-items:center;">
                                 <input type="text" id="stocks-direct-symbol" placeholder="Symbol (e.g. NABIL)" style="text-transform:uppercase; width:140px; padding:0.45rem 0.65rem; font-size:0.85rem; border-radius:var(--radius-sm); border:1px solid var(--border-color); background:var(--bg-card); color:var(--text-primary);">
@@ -471,6 +474,7 @@
                                 <tr>
                                     <th>S.N.</th>
                                     <th>Symbol</th>
+                                    <th>Sector</th>
                                     <th>High</th>
                                     <th>Low</th>
                                     <th>LTP</th>
@@ -480,7 +484,7 @@
                                 </tr>
                             </thead>
                             <tbody id="stocks-table-body">
-                                <tr><td colspan="8" class="text-center">Loading NEPSE stock records...</td></tr>
+                                <tr><td colspan="9" class="text-center">Loading complete NEPSE listed stocks...</td></tr>
                             </tbody>
                         </table>
                     </div>

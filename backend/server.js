@@ -197,12 +197,75 @@ async function scrapeLivePrices() {
         }
     });
 
+    // If live-trading is empty (e.g. holiday or pre-market), fallback to today-share-price which has all 350+ NEPSE stocks
+    if (stocks.length === 0) {
+        try {
+            const todayUrl = 'https://www.sharesansar.com/today-share-price';
+            const todayRes = await axios.get(todayUrl, {
+                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120' },
+                timeout: 25000
+            });
+            const $today = cheerio.load(todayRes.data);
+            $today('table#headFixed tbody tr').each((index, element) => {
+                const tds = $today(element).find('td');
+                if (tds.length >= 18) {
+                    const symbol = $today(tds[1]).text().trim();
+                    const open = $today(tds[3]).text().trim();
+                    const high = $today(tds[4]).text().trim();
+                    const low = $today(tds[5]).text().trim();
+                    const close = $today(tds[6]).text().trim();
+                    const ltp = $today(tds[7]).text().trim() || close;
+                    const volume = $today(tds[11]).text().trim();
+                    const prevClose = $today(tds[12]).text().trim();
+                    const diff = $today(tds[15]).text().trim();
+                    const percDiff = $today(tds[17]).text().trim();
+
+                    if (symbol && symbol !== 'Symbol') {
+                        stocks.push({
+                            symbol,
+                            ltp: ltp || '0',
+                            diff: diff || '0',
+                            percDiff: percDiff || '0',
+                            open: open || '0',
+                            high: high || '0',
+                            low: low || '0',
+                            volume: volume || '0',
+                            prevClose: prevClose || '0'
+                        });
+                    }
+                }
+            });
+        } catch (e) {
+            console.warn("Fallback to today-share-price failed:", e.message);
+        }
+    }
+
     return stocks;
 }
 
 // Test route to ensure server works
 app.get('/', (req, res) => {
     res.send('Backend is running successfully!');
+});
+
+// Complete NEPSE Stocks List Endpoint (All 340+ listed stocks with sector)
+app.get('/api/stocks', async (req, res) => {
+    try {
+        const cached = cache.get('all-stocks');
+        if (cached) {
+            return res.status(200).json({ success: true, count: cached.length, data: cached, cached: true });
+        }
+        const rawStocks = await scrapeLivePrices();
+        const enriched = rawStocks.map(s => ({
+            ...s,
+            sector: SECTOR_MAP[s.symbol] || 'Others'
+        }));
+        cache.set('all-stocks', enriched, CACHE_TTL_LIVE);
+        res.status(200).json({ success: true, count: enriched.length, data: enriched });
+    } catch (error) {
+        console.error("Stocks fetch error:", error.message);
+        res.status(500).json({ success: false, error: 'Failed to fetch listed stocks.' });
+    }
 });
 
 // Web Scraper Endpoint for Live Prices (used by frontend) — with 60s TTL cache

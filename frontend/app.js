@@ -1917,77 +1917,116 @@ document.getElementById('setup-search-input')?.addEventListener('input', renderS
 document.getElementById('setup-signal-filter')?.addEventListener('change', renderSetupTable);
 
 // ==========================================================================
-// --- 6th TAB: FIREBASE STOCK DATABASE MODULE ---
-// Purely public stock records stored in Firebase Firestore.
-// Personal portfolio holdings are completely excluded.
+// ==========================================================================
+// --- 6th TAB: COMPLETE NEPSE STOCKS DIRECTORY & 3Y HISTORICAL MODULE ---
+// Fetches all 340+ actively listed NEPSE stocks directly via API/scraper.
+// Displays live LTP, Day Range, Diff, %, Sector, and 3-Year Historical Chart.
 // ==========================================================================
 
 async function fetchStocksData() {
     if (!stocksTableBody) return;
-    stocksTableBody.innerHTML = '<tr><td colspan="7" class="text-center">Querying Firebase stock records...</td></tr>';
+    stocksTableBody.innerHTML = '<tr><td colspan="9" class="text-center">Loading complete active NEPSE listed stocks...</td></tr>';
+    const countBadge = document.getElementById('stocks-total-count');
+    if (countBadge) countBadge.textContent = 'Loading...';
 
+    // 1. Try to fetch all 340+ stocks from backend /api/stocks or /api/live-prices
+    try {
+        const response = await fetch(`${API_BASE}/api/stocks`);
+        if (response.ok) {
+            const resData = await response.json();
+            const stocksList = resData.data || [];
+            if (Array.isArray(stocksList) && stocksList.length > 0) {
+                stocksDatabaseData = stocksList.map(s => {
+                    const ltp = typeof s.ltp === 'number' ? s.ltp : parseFloat(String(s.ltp).replace(/,/g, '')) || 0;
+                    const high = typeof s.high === 'number' ? s.high : parseFloat(String(s.high).replace(/,/g, '')) || ltp;
+                    const low = typeof s.low === 'number' ? s.low : parseFloat(String(s.low).replace(/,/g, '')) || ltp;
+                    const diff = typeof s.diff === 'number' ? s.diff : parseFloat(String(s.diff).replace(/,/g, '')) || 0;
+                    const percDiff = typeof s.percDiff === 'number' ? s.percDiff : parseFloat(String(s.percDiff).replace(/,/g, '')) || 0;
+                    const volume = typeof s.volume === 'number' ? s.volume : parseFloat(String(s.volume).replace(/,/g, '')) || 0;
+
+                    return {
+                        symbol: s.symbol.toUpperCase(),
+                        latestClose: ltp,
+                        latestHigh: high,
+                        latestLow: low,
+                        latestDiff: diff,
+                        latestPercDiff: percDiff,
+                        latestVolume: volume,
+                        sector: s.sector || 'Others'
+                    };
+                });
+
+                stocksDatabaseData.sort((a, b) => a.symbol.localeCompare(b.symbol));
+                renderStocksTable();
+                return;
+            }
+        }
+    } catch (apiErr) {
+        console.warn("Stocks API fetch failed, trying liveMarketData fallback:", apiErr.message);
+    }
+
+    // 2. Fallback to liveMarketData if already fetched in the application
+    if (liveMarketData && liveMarketData.length > 0) {
+        stocksDatabaseData = liveMarketData.map(s => {
+            const ltp = typeof s.ltp === 'number' ? s.ltp : parseFloat(String(s.ltp).replace(/,/g, '')) || 0;
+            const high = typeof s.high === 'number' ? s.high : parseFloat(String(s.high).replace(/,/g, '')) || ltp;
+            const low = typeof s.low === 'number' ? s.low : parseFloat(String(s.low).replace(/,/g, '')) || ltp;
+            const diff = typeof s.diff === 'number' ? s.diff : parseFloat(String(s.diff).replace(/,/g, '')) || 0;
+            const percDiff = typeof s.percDiff === 'number' ? s.percDiff : parseFloat(String(s.percDiff).replace(/,/g, '')) || 0;
+            const volume = typeof s.volume === 'number' ? s.volume : parseFloat(String(s.volume).replace(/,/g, '')) || 0;
+
+            return {
+                symbol: s.symbol.toUpperCase(),
+                latestClose: ltp,
+                latestHigh: high,
+                latestLow: low,
+                latestDiff: diff,
+                latestPercDiff: percDiff,
+                latestVolume: volume,
+                sector: s.sector || 'Others'
+            };
+        });
+
+        stocksDatabaseData.sort((a, b) => a.symbol.localeCompare(b.symbol));
+        renderStocksTable();
+        return;
+    }
+
+    // 3. Fallback to Firestore daily_history if offline
     try {
         const historyRef = collection(db, "daily_history");
         const querySnap = await getDocs(historyRef);
 
         const stockMap = {};
-
         querySnap.forEach(docSnap => {
             const data = docSnap.data();
             if (!data || !data.symbol) return;
-
             const sym = data.symbol.toUpperCase();
-            if (!stockMap[sym]) {
-                stockMap[sym] = [];
-            }
-
-            const close = typeof data.close === 'number' ? data.close : parseFloat(data.close) || 0;
-            const high = typeof data.high === 'number' ? data.high : parseFloat(data.high) || close;
-            const low = typeof data.low === 'number' ? data.low : parseFloat(data.low) || close;
-            const diff = typeof data.diff === 'number' ? data.diff : parseFloat(data.diff) || 0;
-            const percDiff = typeof data.percDiff === 'number' ? data.percDiff : parseFloat(data.percDiff) || 0;
-            const volume = typeof data.volume === 'number' ? data.volume : parseFloat(data.volume) || 0;
-
-            stockMap[sym].push({
-                date: data.date || 'N/A',
-                close,
-                high,
-                low,
-                diff,
-                percDiff,
-                volume
-            });
+            if (!stockMap[sym]) stockMap[sym] = [];
+            stockMap[sym].push(data);
         });
 
-        // Convert grouped object to array
         stocksDatabaseData = Object.keys(stockMap).map(symbol => {
             const records = stockMap[symbol];
             records.sort((a, b) => new Date(a.date) - new Date(b.date));
-
-            const latest = records[records.length - 1] || { close: 0, high: 0, low: 0, diff: 0, percDiff: 0, volume: 0, date: 'N/A' };
-            const firstDate = records[0] ? records[0].date : 'N/A';
-            const lastDate = latest.date;
-
+            const latest = records[records.length - 1] || {};
             return {
                 symbol,
-                recordCount: records.length,
-                dateRange: firstDate === lastDate ? firstDate : `${firstDate} to ${lastDate}`,
-                latestClose: latest.close,
-                latestHigh: latest.high,
-                latestLow: latest.low,
-                latestDiff: latest.diff,
-                latestPercDiff: latest.percDiff,
-                latestVolume: latest.volume,
-                records
+                latestClose: parseFloat(latest.close) || 0,
+                latestHigh: parseFloat(latest.high) || 0,
+                latestLow: parseFloat(latest.low) || 0,
+                latestDiff: parseFloat(latest.diff) || 0,
+                latestPercDiff: parseFloat(latest.percDiff) || 0,
+                latestVolume: parseFloat(latest.volume) || 0,
+                sector: 'Others'
             };
         });
 
         stocksDatabaseData.sort((a, b) => a.symbol.localeCompare(b.symbol));
-
         renderStocksTable();
     } catch (err) {
-        console.error("Error fetching stocks from Firebase:", err);
-        stocksTableBody.innerHTML = '<tr><td colspan="7" class="text-center negative">Failed to query Firebase stock records.</td></tr>';
+        console.error("Error fetching stocks from Firebase fallback:", err);
+        stocksTableBody.innerHTML = '<tr><td colspan="9" class="text-center negative">Failed to query listed stocks. Please check connection.</td></tr>';
     }
 }
 
@@ -2000,21 +2039,30 @@ let historicalChartInstance = null;
 function renderStocksTable() {
     if (!stocksTableBody) return;
 
+    const countBadge = document.getElementById('stocks-total-count');
+
     if (!stocksDatabaseData || stocksDatabaseData.length === 0) {
-        stocksTableBody.innerHTML = '<tr><td colspan="8" class="text-center">No stock records found in Firebase Firestore daily_history.</td></tr>';
+        stocksTableBody.innerHTML = '<tr><td colspan="9" class="text-center">No stocks found.</td></tr>';
+        if (countBadge) countBadge.textContent = '0 stocks';
         return;
     }
 
     const searchQuery = (document.getElementById('stocks-search-input')?.value || '').toLowerCase().trim();
 
     const filtered = stocksDatabaseData.filter(item => {
-        return item.symbol.toLowerCase().includes(searchQuery);
+        const matchSym = item.symbol.toLowerCase().includes(searchQuery);
+        const matchSector = (item.sector || '').toLowerCase().includes(searchQuery);
+        return matchSym || matchSector;
     });
+
+    if (countBadge) {
+        countBadge.textContent = `${filtered.length} stock${filtered.length === 1 ? '' : 's'}`;
+    }
 
     stocksTableBody.innerHTML = '';
 
     if (filtered.length === 0) {
-        stocksTableBody.innerHTML = '<tr><td colspan="8" class="text-center">No stocks match your search filter.</td></tr>';
+        stocksTableBody.innerHTML = '<tr><td colspan="9" class="text-center">No stocks match your search filter.</td></tr>';
         return;
     }
 
@@ -2028,10 +2076,11 @@ function renderStocksTable() {
         tr.innerHTML = `
             <td>${index + 1}</td>
             <td>
-                <button class="stock-symbol-btn view-stock-history-btn" data-symbol="${stock.symbol}" title="Click to view 3-year historical chart">
+                <button class="stock-symbol-btn view-stock-history-btn" data-symbol="${stock.symbol}" title="Click to view 3-year historical chart for ${stock.symbol}">
                     ${stock.symbol}
                 </button>
             </td>
+            <td><span class="badge-sector">${stock.sector || 'Others'}</span></td>
             <td>Rs ${stock.latestHigh.toFixed(2)}</td>
             <td>Rs ${stock.latestLow.toFixed(2)}</td>
             <td>Rs ${stock.latestClose.toFixed(2)}</td>
