@@ -80,8 +80,9 @@ const cache = {
     }
 };
 
-const CACHE_TTL_LIVE   = 60 * 1000;          // 60 seconds for live prices
-const CACHE_TTL_52WEEK = 15 * 60 * 1000;     // 15 minutes for 52-week data
+const CACHE_TTL_LIVE       = 60 * 1000;          // 60 seconds for live prices
+const CACHE_TTL_52WEEK     = 15 * 60 * 1000;     // 15 minutes for 52-week data
+const CACHE_TTL_HISTORICAL = 6 * 60 * 60 * 1000; // 6 hours for 3-year historical data
 
 // --- Simple In-Memory Rate Limiter for /api/send-alert ---
 const rateLimitMap = new Map(); // ip -> { count, resetAt }
@@ -266,6 +267,179 @@ app.get('/api/historical-prices', async (req, res) => {
     } catch (error) {
         console.error("Historical generation error:", error.message);
         res.status(500).json({ success: false, error: 'Failed to fetch historical data.' });
+    }
+});
+
+// --- Scrape Up to 3 Years of Daily Historical Data for Any NEPSE Stock ---
+// Source: Sharesansar company price history POST API (server-side pagination, 50 rows per batch)
+async function scrapeHistoricalStockData(symbol) {
+    const sym = symbol.toUpperCase().trim();
+    const SLUG_MAP = { UNIL: 'unl' };
+    const slug = SLUG_MAP[sym] || sym.toLowerCase();
+    const companyUrl = `https://www.sharesansar.com/company/${slug}`;
+
+    const pageRes = await axios.get(companyUrl, {
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120'
+        },
+        timeout: 20000
+    });
+
+    const html = pageRes.data;
+    const $ = cheerio.load(html);
+    const token = $('meta[name=_token]').attr('content');
+    const companyId = $('#companyid').text().trim();
+    const cookies = pageRes.headers['set-cookie']
+        ? pageRes.headers['set-cookie'].map(c => c.split(';')[0]).join('; ')
+        : '';
+
+    if (!companyId) {
+        throw new Error(`Could not find company ID for symbol ${sym}`);
+    }
+
+    // Up to 3 years = ~750 trading days (15 pages of 50 records)
+    const totalPages = 15;
+    const pageIndices = Array.from({ length: totalPages }, (_, i) => i * 50);
+    const allRecords = [];
+    const BATCH_SIZE = 5;
+
+    for (let i = 0; i < pageIndices.length; i += BATCH_SIZE) {
+        const batch = pageIndices.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.all(batch.map(async (start) => {
+            const postData = new URLSearchParams({
+                company: companyId,
+                draw: '1',
+                start: String(start),
+                length: '50'
+            });
+            const r = await axios.post('https://www.sharesansar.com/company-price-history', postData.toString(), {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120',
+                    'X-CSRF-Token': token,
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Cookie': cookies,
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                timeout: 15000
+            });
+            return r.data?.data || [];
+        }));
+
+        let shouldStop = false;
+        batchResults.forEach(rows => {
+            if (!rows || rows.length === 0) shouldStop = true;
+            else allRecords.push(...rows);
+        });
+        if (shouldStop) break;
+    }
+
+    // Clean and normalize records
+    const formatted = allRecords.map(r => {
+        const open = parseFloat((r.open || '0').replace(/,/g, '')) || 0;
+        const high = parseFloat((r.high || '0').replace(/,/g, '')) || 0;
+        const low = parseFloat((r.low || '0').replace(/,/g, '')) || 0;
+        const close = parseFloat((r.close || '0').replace(/,/g, '')) || 0;
+        const percDiff = parseFloat((r.per_change || '0').replace(/,/g, '')) || 0;
+        const volume = parseFloat((r.traded_quantity || '0').replace(/,/g, '')) || 0;
+        const amount = parseFloat((r.traded_amount || '0').replace(/,/g, '')) || 0;
+        const diff = parseFloat((close - open).toFixed(2));
+        return {
+            date: r.published_date,
+            open,
+            high,
+            low,
+            close,
+            diff,
+            percDiff,
+            volume,
+            amount
+        };
+    });
+
+    // Sort oldest to newest (chronological order for charts)
+    formatted.sort((a, b) => new Date(a.date) - new Date(b.date));
+    return formatted;
+}
+
+// Endpoint to fetch up to 3 years of real historical NEPSE stock data
+app.get('/api/historical/:symbol', async (req, res) => {
+    const symbol = (req.params.symbol || '').toUpperCase().trim();
+    if (!symbol) {
+        return res.status(400).json({ success: false, error: 'Stock symbol is required.' });
+    }
+
+    const cacheKey = `hist_${symbol}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+        return res.status(200).json({ success: true, symbol, count: cached.length, data: cached, cached: true });
+    }
+
+    try {
+        let history = await scrapeHistoricalStockData(symbol);
+
+        // If external scraper returned 0 records, try Firestore fallback
+        if (!history || history.length === 0) {
+            const historySnap = await db.collection('daily_history')
+                .where('symbol', '==', symbol)
+                .get();
+            if (!historySnap.empty) {
+                history = [];
+                historySnap.forEach(docSnap => {
+                    const d = docSnap.data();
+                    history.push({
+                        date: d.date,
+                        open: d.open || d.close || 0,
+                        high: d.high || d.close || 0,
+                        low: d.low || d.close || 0,
+                        close: d.close || 0,
+                        diff: d.diff || 0,
+                        percDiff: d.percDiff || 0,
+                        volume: d.volume || 0,
+                        amount: d.amount || 0
+                    });
+                });
+                history.sort((a, b) => new Date(a.date) - new Date(b.date));
+            }
+        }
+
+        if (history && history.length > 0) {
+            cache.set(cacheKey, history, CACHE_TTL_HISTORICAL);
+            return res.status(200).json({ success: true, symbol, count: history.length, data: history });
+        }
+
+        return res.status(404).json({ success: false, error: `No historical data found for symbol ${symbol}.` });
+    } catch (error) {
+        console.error(`Historical fetch error for ${symbol}:`, error.message);
+
+        // Graceful fallback from Firestore if available
+        try {
+            const historySnap = await db.collection('daily_history')
+                .where('symbol', '==', symbol)
+                .get();
+            if (!historySnap.empty) {
+                const history = [];
+                historySnap.forEach(docSnap => {
+                    const d = docSnap.data();
+                    history.push({
+                        date: d.date,
+                        open: d.open || d.close || 0,
+                        high: d.high || d.close || 0,
+                        low: d.low || d.close || 0,
+                        close: d.close || 0,
+                        diff: d.diff || 0,
+                        percDiff: d.percDiff || 0,
+                        volume: d.volume || 0,
+                        amount: d.amount || 0
+                    });
+                });
+                history.sort((a, b) => new Date(a.date) - new Date(b.date));
+                return res.status(200).json({ success: true, symbol, count: history.length, data: history, fallback: true });
+            }
+        } catch (dbErr) {
+            console.warn("Firestore fallback error:", dbErr.message);
+        }
+
+        res.status(500).json({ success: false, error: `Failed to fetch historical data for ${symbol}: ${error.message}` });
     }
 });
 

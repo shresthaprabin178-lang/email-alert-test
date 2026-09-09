@@ -448,15 +448,19 @@
                 <div class="glass-card fill-height">
                     <div class="table-controls">
                         <div>
-                            <h3>Firebase Stock Database</h3>
+                            <h3>NEPSE Stocks & 3-Year Historical Data</h3>
                             <p class="text-sm text-secondary" style="margin-top: 0.25rem;">
-                                Public stock records & daily historical price/volume logs stored in Firebase Firestore.
+                                Listed NEPSE stocks with full 3-year historical prices, charts, and Firebase records.
                             </p>
                         </div>
-                        <div class="controls-right filters">
+                        <div class="controls-right filters" style="flex-wrap: wrap; gap: 0.5rem;">
                             <div class="search-box">
                                 <i class="ph ph-magnifying-glass"></i>
                                 <input type="text" id="stocks-search-input" placeholder="Search Symbol...">
+                            </div>
+                            <div class="direct-lookup-box" style="display:flex; gap:0.4rem; align-items:center;">
+                                <input type="text" id="stocks-direct-symbol" placeholder="Symbol (e.g. NABIL)" style="text-transform:uppercase; width:140px; padding:0.45rem 0.65rem; font-size:0.85rem; border-radius:var(--radius-sm); border:1px solid var(--border-color); background:var(--bg-card); color:var(--text-primary);">
+                                <button id="stocks-direct-history-btn" class="primary-btn btn-small" type="button"><i class="ph ph-chart-line"></i> View 3Y</button>
                             </div>
                             <button id="refresh-stocks-btn" class="secondary-btn"><i class="ph ph-arrows-clockwise"></i> Refresh</button>
                         </div>
@@ -472,10 +476,11 @@
                                     <th>LTP</th>
                                     <th>CH</th>
                                     <th>% Change</th>
+                                    <th>3Y History</th>
                                 </tr>
                             </thead>
                             <tbody id="stocks-table-body">
-                                <tr><td colspan="7" class="text-center">Loading Firebase stock records...</td></tr>
+                                <tr><td colspan="8" class="text-center">Loading NEPSE stock records...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -599,33 +604,106 @@
         </div>
     </div>
 
-    <!-- Stock History Detail Modal -->
+    <!-- 3-Year Stock Historical Data & Chart Modal -->
     <div id="stock-history-modal" class="modal-overlay">
-        <div class="modal glass-card" style="max-width: 650px; width: 90%;">
-            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h3>Stored History for <span id="modal-stock-symbol" class="accent"></span></h3>
+        <div class="modal glass-card" style="max-width: 960px; width: 95%; max-height: 92vh; overflow-y: auto; padding: 1.5rem;">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.85rem;">
+                <div style="display:flex; align-items:center; gap:0.75rem;">
+                    <div style="width:40px; height:40px; border-radius:10px; background:rgba(99,102,241,0.15); display:flex; align-items:center; justify-content:center; color:var(--accent);">
+                        <i class="ph ph-chart-line-up" style="font-size: 1.5rem;"></i>
+                    </div>
+                    <div>
+                        <div style="display:flex; align-items:center; gap:0.5rem;">
+                            <h3 style="margin:0;"><span id="modal-stock-symbol" class="accent">STOCK</span></h3>
+                            <span class="badge" id="modal-history-source-badge" style="font-size:0.75rem;">NEPSE 3Y Data</span>
+                        </div>
+                        <p class="text-sm text-secondary" style="margin: 3px 0 0 0;">
+                            Up to 3 Years Historical Price & Volume Analytics (<span id="modal-stock-count">0</span> trading records)
+                        </p>
+                    </div>
+                </div>
                 <button type="button" class="btn-icon close-modal"><i class="ph ph-x"></i></button>
             </div>
-            <p class="text-sm text-secondary" style="margin-bottom: 1rem;">
-                Daily closing prices and volume records saved in Firebase Firestore (<span id="modal-stock-count">0</span> records).
-            </p>
-            <div class="table-container" style="max-height: 380px; overflow-y: auto;">
-                <table id="stock-history-table">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>High</th>
-                            <th>Low</th>
-                            <th>LTP</th>
-                            <th>CH</th>
-                            <th>% Change</th>
-                        </tr>
-                    </thead>
-                    <tbody id="stock-history-table-body">
-                        <tr><td colspan="6" class="text-center">Loading history...</td></tr>
-                    </tbody>
-                </table>
+
+            <!-- Historical Key Stats Grid -->
+            <div class="stock-tx-summary-grid mb-15" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.75rem;">
+                <div class="stock-tx-summary-card">
+                    <span class="label">Latest Price (LTP)</span>
+                    <h4 id="modal-stat-ltp">Rs 0.00</h4>
+                    <span id="modal-stat-change" class="text-sm text-secondary">0.00 (0.00%)</span>
+                </div>
+                <div class="stock-tx-summary-card">
+                    <span class="label">Period High</span>
+                    <h4 id="modal-stat-high" class="positive">Rs 0.00</h4>
+                    <span id="modal-stat-high-date" class="text-sm text-secondary">N/A</span>
+                </div>
+                <div class="stock-tx-summary-card">
+                    <span class="label">Period Low</span>
+                    <h4 id="modal-stat-low" class="negative">Rs 0.00</h4>
+                    <span id="modal-stat-low-date" class="text-sm text-secondary">N/A</span>
+                </div>
+                <div class="stock-tx-summary-card">
+                    <span class="label">Period Return</span>
+                    <h4 id="modal-stat-return">0.00%</h4>
+                    <span id="modal-stat-range-label" class="text-sm text-secondary">Selected Range</span>
+                </div>
             </div>
+
+            <!-- Modal Toolbar: Timeframes & View Toggles -->
+            <div class="modal-history-toolbar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem; background: var(--bg-card); padding: 0.6rem 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                <div class="timeframe-selector" style="display: flex; gap: 0.35rem; align-items: center;">
+                    <span class="text-sm text-secondary" style="font-size: 0.8rem; margin-right: 0.3rem;">Range:</span>
+                    <button type="button" class="timeframe-btn" data-range="1m">1M</button>
+                    <button type="button" class="timeframe-btn" data-range="3m">3M</button>
+                    <button type="button" class="timeframe-btn" data-range="6m">6M</button>
+                    <button type="button" class="timeframe-btn" data-range="1y">1Y</button>
+                    <button type="button" class="timeframe-btn active" data-range="3y">3Y (All)</button>
+                </div>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <div class="view-toggle-pills" style="display: flex; background: var(--bg-surface); padding: 2px; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+                        <button type="button" id="modal-tab-chart" class="pill-btn active" style="padding: 0.3rem 0.7rem; font-size: 0.8rem; border-radius: var(--radius-sm); border: none; cursor: pointer;"><i class="ph ph-chart-line"></i> Chart</button>
+                        <button type="button" id="modal-tab-table" class="pill-btn" style="padding: 0.3rem 0.7rem; font-size: 0.8rem; border-radius: var(--radius-sm); border: none; cursor: pointer;"><i class="ph ph-table"></i> Table</button>
+                    </div>
+                    <button type="button" id="modal-export-csv-btn" class="secondary-btn btn-small" title="Export Historical Data as CSV"><i class="ph ph-download-simple"></i> CSV</button>
+                </div>
+            </div>
+
+            <!-- Loading State -->
+            <div id="modal-history-loading" style="display: none; text-align: center; padding: 2.5rem 1rem;">
+                <div class="spinner" style="display: inline-block; width: 32px; height: 32px; border: 3px solid rgba(99,102,241,0.2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+                <p class="text-sm text-secondary" style="margin-top: 0.75rem;">Loading up to 3 years of trading data from NEPSE...</p>
+            </div>
+
+            <!-- Chart Container -->
+            <div id="modal-chart-view" style="width: 100%;">
+                <div style="position: relative; height: 350px; width: 100%; margin-bottom: 0.5rem;">
+                    <canvas id="historical-chart"></canvas>
+                </div>
+            </div>
+
+            <!-- Table Container -->
+            <div id="modal-table-view" style="display: none; width: 100%;">
+                <div class="table-container" style="max-height: 360px; overflow-y: auto;">
+                    <table id="stock-history-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Open</th>
+                                <th>High</th>
+                                <th>Low</th>
+                                <th>Close (LTP)</th>
+                                <th>Diff</th>
+                                <th>% Change</th>
+                                <th>Volume</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stock-history-table-body">
+                            <tr><td colspan="8" class="text-center">Loading history...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
             <div class="modal-actions mt-2" style="justify-content: flex-end;">
                 <button type="button" class="secondary-btn close-modal">Close</button>
             </div>
@@ -755,6 +833,8 @@
         pointer-events: none;
     "></div>
 
+    <!-- Chart.js CDN for 3-Year Historical Charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script type="module" src="app.js"></script>
 </body>
 </html>

@@ -1991,11 +1991,17 @@ async function fetchStocksData() {
     }
 }
 
+// --- 3-Year Historical Chart & Modal State ---
+let currentHistoricalData = [];
+let currentHistoricalSymbol = '';
+let currentHistoricalRange = '3y';
+let historicalChartInstance = null;
+
 function renderStocksTable() {
     if (!stocksTableBody) return;
 
     if (!stocksDatabaseData || stocksDatabaseData.length === 0) {
-        stocksTableBody.innerHTML = '<tr><td colspan="7" class="text-center">No stock records found in Firebase Firestore daily_history.</td></tr>';
+        stocksTableBody.innerHTML = '<tr><td colspan="8" class="text-center">No stock records found in Firebase Firestore daily_history.</td></tr>';
         return;
     }
 
@@ -2008,7 +2014,7 @@ function renderStocksTable() {
     stocksTableBody.innerHTML = '';
 
     if (filtered.length === 0) {
-        stocksTableBody.innerHTML = '<tr><td colspan="7" class="text-center">No stocks match your search filter.</td></tr>';
+        stocksTableBody.innerHTML = '<tr><td colspan="8" class="text-center">No stocks match your search filter.</td></tr>';
         return;
     }
 
@@ -2022,7 +2028,7 @@ function renderStocksTable() {
         tr.innerHTML = `
             <td>${index + 1}</td>
             <td>
-                <button class="stock-symbol-btn view-stock-history-btn" data-symbol="${stock.symbol}" title="Click to view date-wise history">
+                <button class="stock-symbol-btn view-stock-history-btn" data-symbol="${stock.symbol}" title="Click to view 3-year historical chart">
                     ${stock.symbol}
                 </button>
             </td>
@@ -2031,6 +2037,11 @@ function renderStocksTable() {
             <td>Rs ${stock.latestClose.toFixed(2)}</td>
             <td class="${diffClass}">${diffSign}${diff.toFixed(2)}</td>
             <td><span class="badge ${diffClass}">${diffSign}${perc.toFixed(2)}%</span></td>
+            <td>
+                <button class="secondary-btn btn-small view-stock-history-btn" data-symbol="${stock.symbol}" title="View 3-Year Historical Data & Chart">
+                    <i class="ph ph-chart-line"></i> 3Y History
+                </button>
+            </td>
         `;
         stocksTableBody.appendChild(tr);
     });
@@ -2038,49 +2049,418 @@ function renderStocksTable() {
     document.querySelectorAll('.view-stock-history-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const symbol = e.currentTarget.getAttribute('data-symbol');
-            openStockHistoryModal(symbol);
+            if (symbol) openStockHistoryModal(symbol);
         });
     });
 }
 
-function openStockHistoryModal(symbol) {
+// Filter records based on selected timeframe (1M, 3M, 6M, 1Y, 3Y/All)
+function filterHistoricalByRange(data, range) {
+    if (!data || data.length === 0) return [];
+    if (range === '3y' || range === 'all') return [...data];
+
+    const newestDate = new Date(data[data.length - 1].date);
+    let daysToSubtract = 365;
+    if (range === '1m') daysToSubtract = 30;
+    else if (range === '3m') daysToSubtract = 90;
+    else if (range === '6m') daysToSubtract = 180;
+    else if (range === '1y') daysToSubtract = 365;
+
+    const cutoffTime = new Date(newestDate.getTime() - daysToSubtract * 24 * 60 * 60 * 1000);
+    const filtered = data.filter(d => new Date(d.date) >= cutoffTime);
+    return filtered.length > 0 ? filtered : [...data];
+}
+
+async function openStockHistoryModal(symbol) {
     const modal = document.getElementById('stock-history-modal');
     const modalSymbol = document.getElementById('modal-stock-symbol');
     const modalCount = document.getElementById('modal-stock-count');
-    const tableBody = document.getElementById('stock-history-table-body');
+    const loadingEl = document.getElementById('modal-history-loading');
+    const chartView = document.getElementById('modal-chart-view');
+    const tableView = document.getElementById('modal-table-view');
+    const sourceBadge = document.getElementById('modal-history-source-badge');
 
-    if (!modal || !tableBody) return;
+    if (!modal) return;
 
-    const stock = stocksDatabaseData.find(s => s.symbol === symbol);
-    if (!stock) return;
+    currentHistoricalSymbol = symbol.toUpperCase().trim();
+    currentHistoricalRange = '3y';
+    modalSymbol.textContent = currentHistoricalSymbol;
+    if (modalCount) modalCount.textContent = '...';
 
-    modalSymbol.textContent = stock.symbol;
-    modalCount.textContent = stock.recordCount;
-    tableBody.innerHTML = '';
-
-    const sortedDesc = [...stock.records].reverse();
-
-    sortedDesc.forEach(record => {
-        const tr = document.createElement('tr');
-        const diff = record.diff;
-        const perc = record.percDiff;
-        const diffClass = diff >= 0 ? 'positive' : 'negative';
-        const diffSign = diff > 0 ? '+' : '';
-
-        tr.innerHTML = `
-            <td><strong>${record.date}</strong></td>
-            <td>Rs ${record.high.toFixed(2)}</td>
-            <td>Rs ${record.low.toFixed(2)}</td>
-            <td>Rs ${record.close.toFixed(2)}</td>
-            <td class="${diffClass}">${diffSign}${diff.toFixed(2)}</td>
-            <td><span class="badge ${diffClass}">${diffSign}${perc.toFixed(2)}%</span></td>
-        `;
-        tableBody.appendChild(tr);
+    // Reset toolbar states
+    document.querySelectorAll('.timeframe-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-range') === '3y');
     });
+    const tabChart = document.getElementById('modal-tab-chart');
+    const tabTable = document.getElementById('modal-tab-table');
+    if (tabChart && tabTable) {
+        tabChart.classList.add('active');
+        tabTable.classList.remove('active');
+    }
+    if (chartView) chartView.style.display = 'block';
+    if (tableView) tableView.style.display = 'none';
 
+    // Show loading spinner
+    if (loadingEl) loadingEl.style.display = 'block';
+    if (chartView) chartView.style.opacity = '0.3';
     modal.classList.add('active');
+
+    try {
+        const response = await fetch(`${API_BASE}/api/historical/${currentHistoricalSymbol}`);
+        const result = await response.json();
+
+        if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+            currentHistoricalData = result.data;
+            if (sourceBadge) sourceBadge.textContent = result.fallback ? 'Firestore Records' : 'NEPSE 3Y Data';
+        } else {
+            // Check local Firebase stock database as fallback
+            const localStock = stocksDatabaseData.find(s => s.symbol === currentHistoricalSymbol);
+            if (localStock && localStock.records && localStock.records.length > 0) {
+                currentHistoricalData = [...localStock.records].sort((a, b) => new Date(a.date) - new Date(b.date));
+                if (sourceBadge) sourceBadge.textContent = 'Firestore Records';
+            } else {
+                currentHistoricalData = [];
+            }
+        }
+    } catch (err) {
+        console.warn(`Could not fetch 3Y historical data for ${currentHistoricalSymbol}:`, err.message);
+        const localStock = stocksDatabaseData.find(s => s.symbol === currentHistoricalSymbol);
+        if (localStock && localStock.records && localStock.records.length > 0) {
+            currentHistoricalData = [...localStock.records].sort((a, b) => new Date(a.date) - new Date(b.date));
+            if (sourceBadge) sourceBadge.textContent = 'Firestore Records';
+        } else {
+            currentHistoricalData = [];
+        }
+    } finally {
+        if (loadingEl) loadingEl.style.display = 'none';
+        if (chartView) chartView.style.opacity = '1';
+        renderHistoricalModalView();
+    }
 }
 
-// Stocks Tab Event Listeners
+function renderHistoricalModalView() {
+    const modalCount = document.getElementById('modal-stock-count');
+    const statLtp = document.getElementById('modal-stat-ltp');
+    const statChange = document.getElementById('modal-stat-change');
+    const statHigh = document.getElementById('modal-stat-high');
+    const statHighDate = document.getElementById('modal-stat-high-date');
+    const statLow = document.getElementById('modal-stat-low');
+    const statLowDate = document.getElementById('modal-stat-low-date');
+    const statReturn = document.getElementById('modal-stat-return');
+    const statRangeLabel = document.getElementById('modal-stat-range-label');
+    const tableBody = document.getElementById('stock-history-table-body');
+
+    if (!currentHistoricalData || currentHistoricalData.length === 0) {
+        if (statLtp) statLtp.textContent = 'N/A';
+        if (statHigh) statHigh.textContent = 'N/A';
+        if (statLow) statLow.textContent = 'N/A';
+        if (statReturn) statReturn.textContent = 'N/A';
+        if (tableBody) tableBody.innerHTML = '<tr><td colspan="8" class="text-center">No historical data available for this stock.</td></tr>';
+        if (historicalChartInstance) {
+            historicalChartInstance.destroy();
+            historicalChartInstance = null;
+        }
+        return;
+    }
+
+    const filtered = filterHistoricalByRange(currentHistoricalData, currentHistoricalRange);
+    if (modalCount) modalCount.textContent = `${filtered.length} of ${currentHistoricalData.length}`;
+
+    // Compute key statistics for selected range
+    const latestRecord = filtered[filtered.length - 1];
+    const initialRecord = filtered[0];
+
+    const latestClose = latestRecord.close || 0;
+    const initialClose = initialRecord.close || latestClose;
+    const periodReturn = initialClose > 0 ? ((latestClose - initialClose) / initialClose) * 100 : 0;
+
+    let periodHigh = -Infinity;
+    let periodHighDate = 'N/A';
+    let periodLow = Infinity;
+    let periodLowDate = 'N/A';
+
+    filtered.forEach(r => {
+        const h = r.high || r.close;
+        const l = r.low || r.close;
+        if (h > periodHigh) {
+            periodHigh = h;
+            periodHighDate = r.date;
+        }
+        if (l < periodLow && l > 0) {
+            periodLow = l;
+            periodLowDate = r.date;
+        }
+    });
+
+    if (periodHigh === -Infinity) periodHigh = latestClose;
+    if (periodLow === Infinity) periodLow = latestClose;
+
+    const diff = latestRecord.diff || (latestClose - (latestRecord.open || latestClose));
+    const percDiff = latestRecord.percDiff || 0;
+    const diffSign = diff > 0 ? '+' : '';
+    const diffClass = diff >= 0 ? 'positive' : 'negative';
+
+    if (statLtp) statLtp.textContent = `Rs ${latestClose.toFixed(2)}`;
+    if (statChange) {
+        statChange.innerHTML = `<span class="${diffClass}">${diffSign}${diff.toFixed(2)} (${diffSign}${percDiff.toFixed(2)}%)</span>`;
+    }
+    if (statHigh) statHigh.textContent = `Rs ${periodHigh.toFixed(2)}`;
+    if (statHighDate) statHighDate.textContent = periodHighDate;
+    if (statLow) statLow.textContent = `Rs ${periodLow.toFixed(2)}`;
+    if (statLowDate) statLowDate.textContent = periodLowDate;
+
+    const returnSign = periodReturn > 0 ? '+' : '';
+    const returnClass = periodReturn >= 0 ? 'positive' : 'negative';
+    if (statReturn) {
+        statReturn.innerHTML = `<span class="${returnClass}">${returnSign}${periodReturn.toFixed(2)}%</span>`;
+    }
+    if (statRangeLabel) {
+        const rangeLabels = { '1m': 'Last 1 Month', '3m': 'Last 3 Months', '6m': 'Last 6 Months', '1y': 'Last 1 Year', '3y': 'Past 3 Years' };
+        statRangeLabel.textContent = rangeLabels[currentHistoricalRange] || 'Selected Range';
+    }
+
+    // --- Render Chart.js Chart ---
+    renderHistoricalChart(filtered, periodReturn >= 0);
+
+    // --- Render Historical Table ---
+    if (tableBody) {
+        tableBody.innerHTML = '';
+        const sortedDesc = [...filtered].reverse();
+        sortedDesc.forEach(record => {
+            const tr = document.createElement('tr');
+            const rowDiff = record.diff || (record.close - record.open);
+            const rowPerc = record.percDiff || 0;
+            const rDiffClass = rowDiff >= 0 ? 'positive' : 'negative';
+            const rDiffSign = rowDiff > 0 ? '+' : '';
+
+            tr.innerHTML = `
+                <td><strong>${record.date}</strong></td>
+                <td>Rs ${(record.open || record.close).toFixed(2)}</td>
+                <td>Rs ${(record.high || record.close).toFixed(2)}</td>
+                <td>Rs ${(record.low || record.close).toFixed(2)}</td>
+                <td><strong>Rs ${record.close.toFixed(2)}</strong></td>
+                <td class="${rDiffClass}">${rDiffSign}${rowDiff.toFixed(2)}</td>
+                <td><span class="badge ${rDiffClass}">${rDiffSign}${rowPerc.toFixed(2)}%</span></td>
+                <td>${(record.volume || 0).toLocaleString()}</td>
+            `;
+            tableBody.appendChild(tr);
+        });
+    }
+}
+
+function renderHistoricalChart(records, isPositive) {
+    const canvas = document.getElementById('historical-chart');
+    if (!canvas || typeof Chart === 'undefined') return;
+
+    if (historicalChartInstance) {
+        historicalChartInstance.destroy();
+        historicalChartInstance = null;
+    }
+
+    const labels = records.map(r => r.date);
+    const closePrices = records.map(r => r.close);
+    const volumes = records.map(r => r.volume || 0);
+
+    const isLightMode = document.body.classList.contains('theme-light');
+    const gridColor = isLightMode ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.08)';
+    const textColor = isLightMode ? '#64748b' : '#94a3b8';
+
+    const lineColor = isPositive ? '#10b981' : '#ef4444';
+    const gradientTop = isPositive ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.35)';
+    const gradientBottom = isPositive ? 'rgba(16, 185, 129, 0.01)' : 'rgba(239, 68, 68, 0.01)';
+
+    const ctx = canvas.getContext('2d');
+    const gradient = ctx.createLinearGradient(0, 0, 0, 320);
+    gradient.addColorStop(0, gradientTop);
+    gradient.addColorStop(1, gradientBottom);
+
+    historicalChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: `${currentHistoricalSymbol} Price (Rs)`,
+                    data: closePrices,
+                    borderColor: lineColor,
+                    backgroundColor: gradient,
+                    borderWidth: 2.2,
+                    fill: true,
+                    tension: 0.2,
+                    pointRadius: records.length > 100 ? 0 : 2.5,
+                    pointHoverRadius: 5,
+                    pointHoverBackgroundColor: lineColor,
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'Volume',
+                    type: 'bar',
+                    data: volumes,
+                    backgroundColor: isLightMode ? 'rgba(99, 102, 241, 0.25)' : 'rgba(99, 102, 241, 0.35)',
+                    borderColor: 'transparent',
+                    yAxisID: 'yVolume',
+                    barPercentage: 0.6
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: {
+                        color: textColor,
+                        boxWidth: 12,
+                        font: { size: 11, weight: '600' }
+                    }
+                },
+                tooltip: {
+                    backgroundColor: isLightMode ? 'rgba(255, 255, 255, 0.95)' : 'rgba(15, 23, 42, 0.95)',
+                    titleColor: isLightMode ? '#0f172a' : '#f8fafc',
+                    bodyColor: isLightMode ? '#334155' : '#cbd5e1',
+                    borderColor: isLightMode ? '#e2e8f0' : 'rgba(255, 255, 255, 0.1)',
+                    borderWidth: 1,
+                    padding: 10,
+                    callbacks: {
+                        label: function(context) {
+                            if (context.dataset.yAxisID === 'y') {
+                                return ` Close: Rs ${context.raw.toFixed(2)}`;
+                            } else if (context.dataset.yAxisID === 'yVolume') {
+                                return ` Volume: ${context.raw.toLocaleString()} shares`;
+                            }
+                            return `${context.dataset.label}: ${context.raw}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: gridColor },
+                    ticks: {
+                        color: textColor,
+                        maxTicksLimit: 10,
+                        font: { size: 11 }
+                    }
+                },
+                y: {
+                    type: 'linear',
+                    position: 'left',
+                    grid: { color: gridColor },
+                    ticks: {
+                        color: textColor,
+                        callback: val => `Rs ${val}`,
+                        font: { size: 11 }
+                    }
+                },
+                yVolume: {
+                    type: 'linear',
+                    position: 'right',
+                    grid: { drawOnChartArea: false },
+                    ticks: {
+                        display: false
+                    },
+                    // Scale volume to stay in bottom 25% of chart
+                    max: Math.max(...volumes) * 4
+                }
+            }
+        }
+    });
+}
+
+// Download filtered historical data as CSV
+function exportHistoricalCsv() {
+    if (!currentHistoricalData || currentHistoricalData.length === 0) {
+        alert("No historical data available to export.");
+        return;
+    }
+
+    const filtered = filterHistoricalByRange(currentHistoricalData, currentHistoricalRange);
+    const headers = ["Date", "Open", "High", "Low", "Close", "Diff", "PercChange", "Volume", "Amount"];
+    const rows = filtered.map(r => [
+        r.date,
+        r.open || r.close,
+        r.high || r.close,
+        r.low || r.close,
+        r.close,
+        r.diff || 0,
+        r.percDiff || 0,
+        r.volume || 0,
+        r.amount || 0
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," 
+        + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `${currentHistoricalSymbol}_NEPSE_3Y_History_${currentHistoricalRange}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+// Stocks Tab & Modal Event Listeners
 document.getElementById('refresh-stocks-btn')?.addEventListener('click', fetchStocksData);
 document.getElementById('stocks-search-input')?.addEventListener('input', renderStocksTable);
+
+// Direct stock historical search
+const directInput = document.getElementById('stocks-direct-symbol');
+const directBtn = document.getElementById('stocks-direct-history-btn');
+
+function handleDirectHistoricalSearch() {
+    const sym = (directInput?.value || '').toUpperCase().trim();
+    if (!sym) {
+        alert("Please enter a stock symbol (e.g. NABIL, SHIVM, etc.)");
+        return;
+    }
+    openStockHistoryModal(sym);
+}
+
+directBtn?.addEventListener('click', handleDirectHistoricalSearch);
+directInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        handleDirectHistoricalSearch();
+    }
+});
+
+// Timeframe selector buttons in modal (1M, 3M, 6M, 1Y, 3Y)
+document.querySelectorAll('.timeframe-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.timeframe-btn').forEach(b => b.classList.remove('active'));
+        e.currentTarget.classList.add('active');
+        currentHistoricalRange = e.currentTarget.getAttribute('data-range') || '3y';
+        renderHistoricalModalView();
+    });
+});
+
+// Chart vs Table view switchers in modal
+const tabChartBtn = document.getElementById('modal-tab-chart');
+const tabTableBtn = document.getElementById('modal-tab-table');
+const chartViewEl = document.getElementById('modal-chart-view');
+const tableViewEl = document.getElementById('modal-table-view');
+
+tabChartBtn?.addEventListener('click', () => {
+    tabChartBtn.classList.add('active');
+    tabTableBtn.classList.remove('active');
+    if (chartViewEl) chartViewEl.style.display = 'block';
+    if (tableViewEl) tableViewEl.style.display = 'none';
+    if (historicalChartInstance) historicalChartInstance.resize();
+});
+
+tabTableBtn?.addEventListener('click', () => {
+    tabTableBtn.classList.add('active');
+    tabChartBtn.classList.remove('active');
+    if (chartViewEl) chartViewEl.style.display = 'none';
+    if (tableViewEl) tableViewEl.style.display = 'block';
+});
+
+// CSV Export button in modal
+document.getElementById('modal-export-csv-btn')?.addEventListener('click', exportHistoricalCsv);
