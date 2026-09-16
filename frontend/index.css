@@ -1016,3 +1016,93 @@ input:focus, select:focus {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
 }
+
+/* ==========================================================================
+   Portfolio Alert Blink Animations — Target Hit & Stop Loss Hit
+   ========================================================================== */
+
+/* ---- Target Price Hit: continuous green pulse ---- */
+@keyframes blink-target-hit {
+    0%   { box-shadow: 0 0 0 2px rgba(16,185,129,0.0),  0 0 0 4px rgba(16,185,129,0.0);  border-color: rgba(16,185,129,0.35); }
+    40%  { box-shadow: 0 0 12px 4px rgba(16,185,129,0.55), 0 0 30px 8px rgba(16,185,129,0.25); border-color: #10b981; }
+    100% { box-shadow: 0 0 0 2px rgba(16,185,129,0.0),  0 0 0 4px rgba(16,185,129,0.0);  border-color: rgba(16,185,129,0.35); }
+}
+
+/* ---- Stop Loss Hit: continuous red pulse ---- */
+@keyframes blink-sl-hit {
+    0%   { box-shadow: 0 0 0 2px rgba(239,68,68,0.0),  0 0 0 4px rgba(239,68,68,0.0);  border-color: rgba(239,68,68,0.35); }
+    40%  { box-shadow: 0 0 12px 4px rgba(239,68,68,0.60), 0 0 30px 8px rgba(239,68,68,0.28); border-color: #ef4444; }
+    100% { box-shadow: 0 0 0 2px rgba(239,68,68,0.0),  0 0 0 4px rgba(239,68,68,0.0);  border-color: rgba(239,68,68,0.35); }
+}
+
+/* Card alert classes */
+.portfolio-card.target-hit {
+    animation: blink-target-hit 1.6s ease-in-out infinite;
+    border-color: #10b981 !important;
+    background: linear-gradient(135deg, rgba(16,185,129,0.06) 0%, var(--bg-panel) 100%);
+    transform: none !important; /* prevent hover lift interfering */
+}
+
+.portfolio-card.target-hit:hover {
+    transform: translateY(-3px) !important;
+}
+
+.portfolio-card.sl-hit {
+    animation: blink-sl-hit 1.4s ease-in-out infinite;
+    border-color: #ef4444 !important;
+    background: linear-gradient(135deg, rgba(239,68,68,0.06) 0%, var(--bg-panel) 100%);
+}
+
+.portfolio-card.sl-hit:hover {
+    transform: translateY(-3px) !important;
+}
+
+/* Status badge shown on the card when target/sl is hit */
+.portfolio-alert-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.2rem 0.55rem;
+    border-radius: 20px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.portfolio-alert-badge.badge-target {
+    background: rgba(16,185,129,0.18);
+    color: #10b981;
+    border: 1px solid rgba(16,185,129,0.45);
+    box-shadow: 0 0 8px rgba(16,185,129,0.3);
+}
+
+.portfolio-alert-badge.badge-sl {
+    background: rgba(239,68,68,0.18);
+    color: #ef4444;
+    border: 1px solid rgba(239,68,68,0.45);
+    box-shadow: 0 0 8px rgba(239,68,68,0.3);
+}
+
+/* Table row glow variants (for table view) */
+@keyframes blink-row-target {
+    0%   { background-color: transparent; }
+    40%  { background-color: rgba(16,185,129,0.1); }
+    100% { background-color: transparent; }
+}
+@keyframes blink-row-sl {
+    0%   { background-color: transparent; }
+    40%  { background-color: rgba(239,68,68,0.1); }
+    100% { background-color: transparent; }
+}
+
+tr.portfolio-row-target-hit td {
+    animation: blink-row-target 1.6s ease-in-out infinite;
+    border-left: 3px solid #10b981;
+}
+
+tr.portfolio-row-sl-hit td {
+    animation: blink-row-sl 1.4s ease-in-out infinite;
+    border-left: 3px solid #ef4444;
+}

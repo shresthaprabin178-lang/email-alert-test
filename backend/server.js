@@ -240,6 +240,99 @@ async function scrapeLivePrices() {
         }
     }
 
+    // Third-tier fallback: Merolagani today-share-price page (reliable even on non-trading days)
+    // Source: https://merolagani.com/StockQuote.aspx — table with all NEPSE stocks
+    if (stocks.length === 0) {
+        try {
+            console.log('   Attempting Merolagani fallback for live prices...');
+            const mlRes = await axios.get('https://merolagani.com/StockQuote.aspx', {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Referer': 'https://merolagani.com/'
+                },
+                timeout: 25000
+            });
+            const $ml = cheerio.load(mlRes.data);
+
+            // Merolagani stock quote table: columns vary but symbol/ltp/change are present
+            // Table id="ctl00_ContentPlaceHolder1_LiveTrading1_gridView" or similar
+            // Merolagani table layout: col[0]=row#, col[1]=Symbol, col[2]=LTP, col[3]=Diff, col[4]=%Diff, col[5]=High, col[6]=Low, ...
+            $ml('table.table tbody tr, table tbody tr').each((i, el) => {
+                const tds = $ml(el).find('td');
+                if (tds.length >= 6) {
+                    const symbol   = $ml(tds[1]).text().trim();
+                    const ltp      = $ml(tds[2]).text().trim().replace(/,/g, '');
+                    const diff     = $ml(tds[3]).text().trim().replace(/,/g, '');
+                    const percDiff = $ml(tds[4]).text().trim().replace(/%/g, '').trim();
+                    const high     = $ml(tds[5]).text().trim().replace(/,/g, '') || ltp;
+                    const low      = tds.length >= 7 ? $ml(tds[6]).text().trim().replace(/,/g, '') : ltp;
+
+                    if (symbol && /^[A-Z]{2,}/.test(symbol) && ltp && parseFloat(ltp) > 0) {
+                        stocks.push({
+                            symbol,
+                            ltp:      ltp      || '0',
+                            diff:     diff     || '0',
+                            percDiff: percDiff || '0',
+                            high:     high     || ltp,
+                            low:      low      || ltp,
+                            volume:   '0',
+                            prevClose:'0',
+                            source:   'merolagani'
+                        });
+                    }
+                }
+            });
+
+            if (stocks.length > 0) {
+                console.log(`   Merolagani fallback: fetched ${stocks.length} stocks.`);
+            }
+        } catch (mlErr) {
+            console.warn("Merolagani fallback failed:", mlErr.message);
+        }
+    }
+
+    return stocks;
+}
+
+// Standalone Merolagani live price scraper (for direct /api/merolagani-prices endpoint)
+async function scrapeMerolaganiPrices() {
+    const pages = [
+        'https://merolagani.com/StockQuote.aspx',
+    ];
+    const stocks = [];
+    for (const url of pages) {
+        try {
+            const res = await axios.get(url, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120',
+                    'Accept': 'text/html,application/xhtml+xml',
+                    'Referer': 'https://merolagani.com/'
+                },
+                timeout: 25000
+            });
+            const $ = cheerio.load(res.data);
+            // col[0]=row#, col[1]=Symbol, col[2]=LTP, col[3]=Diff, col[4]=%Diff, col[5]=High, col[6]=Low
+            $('table.table tbody tr, table tbody tr').each((i, el) => {
+                const tds = $(el).find('td');
+                if (tds.length >= 6) {
+                    const symbol   = $(tds[1]).text().trim();
+                    const ltp      = $(tds[2]).text().trim().replace(/,/g, '');
+                    const diff     = $(tds[3]).text().trim().replace(/,/g, '');
+                    const percDiff = $(tds[4]).text().trim().replace(/%/g, '').trim();
+                    const high     = $(tds[5]).text().trim().replace(/,/g, '') || ltp;
+                    const low      = tds.length >= 7 ? $(tds[6]).text().trim().replace(/,/g, '') : ltp;
+
+                    if (symbol && /^[A-Z]{2,}/.test(symbol) && ltp && parseFloat(ltp) > 0) {
+                        stocks.push({ symbol, ltp, diff, percDiff, high, low, volume: '0', prevClose: '0' });
+                    }
+                }
+            });
+        } catch (e) {
+            console.warn(`Merolagani page fetch failed (${url}):`, e.message);
+        }
+    }
     return stocks;
 }
 

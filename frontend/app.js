@@ -718,21 +718,40 @@ function updatePortfolio() {
             filteredItems.forEach(item => {
                 const plClass = item.pl >= 0 ? 'positive' : 'negative';
                 const card = document.createElement('div');
-                card.className = 'portfolio-card';
+
+                // --- Detect target hit and stop loss hit (only when live price is available) ---
+                const hasLivePrice = liveMarketData.some(s => s.symbol === item.symbol);
+                const isTargetHit = hasLivePrice && item.targetPrice && parseFloat(item.targetPrice) > 0 && item.ltp >= parseFloat(item.targetPrice);
+                const isSlHit     = hasLivePrice && item.stopLoss  && parseFloat(item.stopLoss)  > 0 && item.ltp <= parseFloat(item.stopLoss);
+
+                // Apply blink classes
+                let cardClass = 'portfolio-card';
+                if (isTargetHit) cardClass += ' target-hit';
+                else if (isSlHit) cardClass += ' sl-hit';
+                card.className = cardClass;
+
+                // Alert status badge for header
+                let alertBadgeHtml = '';
+                if (isTargetHit) {
+                    alertBadgeHtml = `<span class="portfolio-alert-badge badge-target"><i class="ph ph-check-circle"></i> TARGET HIT 🎯</span>`;
+                } else if (isSlHit) {
+                    alertBadgeHtml = `<span class="portfolio-alert-badge badge-sl"><i class="ph ph-warning"></i> SL HIT ⚠️</span>`;
+                }
 
                 const targetDisplay = item.targetPrice ? `<span class="positive">Rs ${parseFloat(item.targetPrice).toFixed(2)}</span>` : '<span class="text-secondary">—</span>';
                 const slDisplay = item.stopLoss ? `<span class="negative">Rs ${parseFloat(item.stopLoss).toFixed(2)}</span>` : '<span class="text-secondary">—</span>';
 
                 card.innerHTML = `
                     <div class="portfolio-card-header">
-                        <div class="symbol-wrap">
+                        <div class="symbol-wrap" style="flex-direction:column; align-items:flex-start; gap:0.3rem;">
                             <button type="button" class="stock-symbol-btn stock-tx-trigger-btn" data-symbol="${item.symbol}" title="Click to view transaction history for ${item.symbol}">
                                 <i class="ph ph-clock-counter-clockwise"></i> ${item.symbol}
                             </button>
+                            ${alertBadgeHtml}
                         </div>
                         <div class="ltp-wrap">
                             <span class="text-sm text-secondary" style="display:block; font-size:0.75rem;">LTP</span>
-                            <span class="ltp-val">Rs ${item.ltp.toFixed(2)}</span>
+                            <span class="ltp-val" style="color: ${isTargetHit ? '#10b981' : isSlHit ? '#ef4444' : 'inherit'};">Rs ${item.ltp.toFixed(2)}</span>
                         </div>
                     </div>
                     <div class="portfolio-card-stats">
@@ -805,18 +824,32 @@ function updatePortfolio() {
             filteredItems.forEach(item => {
                 const plClass = item.pl >= 0 ? 'positive' : 'negative';
                 const tr = document.createElement('tr');
+
+                // --- Detect target hit and stop loss hit for table rows ---
+                const hasLivePrice = liveMarketData.some(s => s.symbol === item.symbol);
+                const isTargetHit = hasLivePrice && item.targetPrice && parseFloat(item.targetPrice) > 0 && item.ltp >= parseFloat(item.targetPrice);
+                const isSlHit     = hasLivePrice && item.stopLoss  && parseFloat(item.stopLoss)  > 0 && item.ltp <= parseFloat(item.stopLoss);
+
+                if (isTargetHit) tr.classList.add('portfolio-row-target-hit');
+                else if (isSlHit) tr.classList.add('portfolio-row-sl-hit');
+
                 const targetDisplay = item.targetPrice ? `<span class="positive">Rs ${parseFloat(item.targetPrice).toFixed(2)}</span>` : '<span class="text-sm">—</span>';
                 const slDisplay = item.stopLoss ? `<span class="negative">Rs ${parseFloat(item.stopLoss).toFixed(2)}</span>` : '<span class="text-sm">—</span>';
+
+                // Alert badge for table rows
+                let rowAlertBadge = '';
+                if (isTargetHit) rowAlertBadge = ` <span class="portfolio-alert-badge badge-target" style="font-size:0.65rem;">🎯 HIT</span>`;
+                else if (isSlHit) rowAlertBadge = ` <span class="portfolio-alert-badge badge-sl" style="font-size:0.65rem;">⚠️ SL</span>`;
 
                 tr.innerHTML = `
                     <td>
                         <button type="button" class="stock-symbol-btn stock-tx-trigger-btn" data-symbol="${item.symbol}" title="View transaction history for ${item.symbol}">
                             ${item.symbol}
-                        </button>
+                        </button>${rowAlertBadge}
                     </td>
                     <td>${item.qty}</td>
                     <td>Rs ${item.wacc.toFixed(2)}</td>
-                    <td>Rs ${item.ltp.toFixed(2)}</td>
+                    <td style="color: ${isTargetHit ? '#10b981' : isSlHit ? '#ef4444' : 'inherit'}; font-weight: ${(isTargetHit || isSlHit) ? '700' : '400'};">Rs ${item.ltp.toFixed(2)}</td>
                     <td>Rs ${item.actualInvested.toFixed(2)}</td>
                     <td>Rs ${item.currentValue.toFixed(2)}</td>
                     <td class="${plClass}">${item.pl >= 0 ? '+' : ''}Rs ${item.pl.toFixed(2)}</td>
