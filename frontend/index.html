@@ -100,6 +100,27 @@
 
             <!-- Tab Content: Live Market -->
             <div id="tab-live" class="tab-content">
+                <!-- NEPSE Index Banner -->
+                <div id="nepse-index-banner" class="nepse-index-banner glass-card mb-2">
+                    <div class="nepse-index-left">
+                        <div class="nepse-index-icon"><i class="ph ph-chart-line-up"></i></div>
+                        <div>
+                            <span class="nepse-index-label">NEPSE Index</span>
+                            <div class="nepse-index-value" id="nepse-index-value">—</div>
+                        </div>
+                    </div>
+                    <div class="nepse-index-right">
+                        <div class="nepse-change-block">
+                            <span class="nepse-change-label">Today's Change</span>
+                            <div class="nepse-changes">
+                                <span id="nepse-point-change" class="nepse-pt-change">—</span>
+                                <span id="nepse-perc-change" class="nepse-perc-badge">—</span>
+                            </div>
+                        </div>
+                        <span id="nepse-index-status" class="nepse-status-dot"></span>
+                    </div>
+                </div>
+
                 <div class="glass-card fill-height">
                     <div class="table-controls">
                         <h3>Today's Share Prices</h3>
@@ -133,33 +154,40 @@
 
             <!-- Tab Content: Portfolio -->
             <div id="tab-portfolio" class="tab-content active">
-                <div class="metrics-grid">
-                    <div class="metric-card glass-card">
-                        <div class="metric-header">
-                            <span class="label">Available Cash</span>
-                            <div class="metric-actions">
-                                <button class="btn-icon" id="add-cash-btn" title="Add Cash"><i class="ph ph-plus-circle"></i></button>
-                                <button class="btn-icon" id="withdraw-cash-btn" title="Withdraw Cash"><i class="ph ph-minus-circle"></i></button>
-                            </div>
+                <!-- Combined Metrics Summary Card -->
+                <div class="portfolio-summary-card glass-card mb-2">
+                    <div class="portfolio-summary-header">
+                        <div class="portfolio-summary-title">
+                            <i class="ph ph-briefcase" style="font-size:1.2rem; color:var(--accent);"></i>
+                            <span>Portfolio Summary</span>
                         </div>
-                        <h3 id="portfolio-cash">Rs 0.00</h3>
+                        <div class="portfolio-cash-actions">
+                            <button class="btn-icon" id="add-cash-btn" title="Add Cash"><i class="ph ph-plus-circle"></i></button>
+                            <button class="btn-icon" id="withdraw-cash-btn" title="Withdraw Cash"><i class="ph ph-minus-circle"></i></button>
+                        </div>
                     </div>
-                    <div class="metric-card glass-card">
-                        <span class="label">Initial Investment</span>
-                        <h3 id="portfolio-initial-invested">Rs 0.00</h3>
-                    </div>
-                    <div class="metric-card glass-card">
-                        <span class="label">Current Value</span>
-                        <h3 id="portfolio-total-value">Rs 0.00</h3>
-                    </div>
-                    <div class="metric-card glass-card">
-                        <span class="label">Current Investment</span>
-                        <h3 id="portfolio-total-invested">Rs 0.00</h3>
-                    </div>
-                    <div class="metric-card glass-card highlight">
-                        <span class="label">Overall P&L (Tax Adjusted)</span>
-                        <h3 id="portfolio-pl" class="positive">+ Rs 0.00</h3>
-                        <span id="portfolio-pl-perc" class="badge positive">0.00%</span>
+                    <div class="portfolio-summary-grid">
+                        <div class="summary-stat-item">
+                            <span class="summary-stat-label">Available Cash</span>
+                            <span class="summary-stat-val" id="portfolio-cash">Rs 0.00</span>
+                        </div>
+                        <div class="summary-stat-item">
+                            <span class="summary-stat-label">Initial Investment</span>
+                            <span class="summary-stat-val" id="portfolio-initial-invested">Rs 0.00</span>
+                        </div>
+                        <div class="summary-stat-item">
+                            <span class="summary-stat-label">Current Value</span>
+                            <span class="summary-stat-val" id="portfolio-total-value">Rs 0.00</span>
+                        </div>
+                        <div class="summary-stat-item">
+                            <span class="summary-stat-label">Current Investment</span>
+                            <span class="summary-stat-val" id="portfolio-total-invested">Rs 0.00</span>
+                        </div>
+                        <div class="summary-stat-item summary-pl-item">
+                            <span class="summary-stat-label">Overall P&L (Tax Adj.)</span>
+                            <span class="summary-stat-val" id="portfolio-pl">+ Rs 0.00</span>
+                            <span id="portfolio-pl-perc" class="badge positive" style="margin-top:0.25rem;">0.00%</span>
+                        </div>
                     </div>
                 </div>
 
@@ -281,30 +309,8 @@
 
             <!-- Tab Content: Watchlist -->
             <div id="tab-watchlist" class="tab-content">
+                <!-- Watchlist table FIRST (top priority) -->
                 <div class="glass-card mb-2">
-                    <h3>Add to Watchlist</h3>
-                    <form id="watchlist-form" class="form-inline">
-                        <div class="form-group flex-1">
-                            <label>Symbol</label>
-                            <input type="text" id="wl-symbol" required autocomplete="off" placeholder="e.g. SHIVM">
-                        </div>
-                        <div class="form-group flex-1">
-                            <label>Target Buy Price (Rs)</label>
-                            <input type="number" id="wl-target" step="0.01" required placeholder="Alert when LTP <= Target">
-                        </div>
-                        <div class="form-group flex-1">
-                            <label>Take Profit / Target (Rs) <small style="color:var(--text-secondary)">(optional)</small></label>
-                            <input type="number" id="wl-take-profit" step="0.01" placeholder="Alert when LTP >= this">
-                        </div>
-                        <div class="form-group flex-1">
-                            <label>Stop Loss (Rs) <small style="color:var(--text-secondary)">(optional)</small></label>
-                            <input type="number" id="wl-stop-loss" step="0.01" placeholder="Alert when LTP <= this">
-                        </div>
-                        <button type="submit" class="primary-btn mt-auto">Add Alert</button>
-                    </form>
-                </div>
-
-                <div class="glass-card">
                     <h3>Your Watchlist</h3>
                     <div class="table-container">
                         <table id="watchlist-table">
@@ -312,6 +318,8 @@
                                 <tr>
                                     <th>Symbol</th>
                                     <th>LTP</th>
+                                    <th>Change</th>
+                                    <th>% Change</th>
                                     <th>Target Buy</th>
                                     <th>Take Profit</th>
                                     <th>Stop Loss</th>
@@ -322,10 +330,34 @@
                                 </tr>
                             </thead>
                             <tbody id="watchlist-table-body">
-                                <tr><td colspan="9" class="text-center">Watchlist is empty.</td></tr>
+                                <tr><td colspan="11" class="text-center">Watchlist is empty.</td></tr>
                             </tbody>
                         </table>
                     </div>
+                </div>
+
+                <!-- Add to Watchlist form BELOW (moved to bottom) -->
+                <div class="glass-card">
+                    <h3><i class="ph ph-plus-circle" style="color:var(--accent); margin-right:0.4rem;"></i>Add to Watchlist</h3>
+                    <form id="watchlist-form" class="form-inline" style="margin-top:1rem;">
+                        <div class="form-group flex-1">
+                            <label>Symbol</label>
+                            <input type="text" id="wl-symbol" required autocomplete="off" placeholder="e.g. SHIVM">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Target Buy Price (Rs)</label>
+                            <input type="number" id="wl-target" step="0.01" required placeholder="Alert when LTP &lt;= Target">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Take Profit / Target (Rs) <small style="color:var(--text-secondary)">(optional)</small></label>
+                            <input type="number" id="wl-take-profit" step="0.01" placeholder="Alert when LTP &gt;= this">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Stop Loss (Rs) <small style="color:var(--text-secondary)">(optional)</small></label>
+                            <input type="number" id="wl-stop-loss" step="0.01" placeholder="Alert when LTP &lt;= this">
+                        </div>
+                        <button type="submit" class="primary-btn mt-auto">Add Alert</button>
+                    </form>
                 </div>
             </div>
 

@@ -32,6 +32,48 @@ let portfolioSortBy = 'pl-desc';
 let portfolioSearchQuery = '';
 let portfolioViewMode = 'grid'; // 'grid' or 'table'
 
+// Persistent storage for previous day LTP mapped by stock symbol
+function getCachedPreviousDayLtp(symbol) {
+    try {
+        const cache = JSON.parse(localStorage.getItem('cache_previousDayLtp') || '{}');
+        return cache[symbol] ? parseFloat(cache[symbol]) : 0;
+    } catch (e) {
+        return 0;
+    }
+}
+
+function setCachedPreviousDayLtp(symbol, price) {
+    if (!symbol || !price || isNaN(price) || price <= 0) return;
+    try {
+        const cache = JSON.parse(localStorage.getItem('cache_previousDayLtp') || '{}');
+        cache[symbol] = parseFloat(price);
+        localStorage.setItem('cache_previousDayLtp', JSON.stringify(cache));
+    } catch (e) {}
+}
+
+function saveBulkPreviousDayLtp(marketData) {
+    if (!Array.isArray(marketData) || marketData.length === 0) return;
+    try {
+        const cache = JSON.parse(localStorage.getItem('cache_previousDayLtp') || '{}');
+        marketData.forEach(item => {
+            if (!item || !item.symbol) return;
+            const prev = parseFloat(String(item.prevClose || 0).replace(/,/g, ''));
+            const ltp = parseFloat(String(item.ltp || 0).replace(/,/g, ''));
+            if (prev > 0) {
+                cache[item.symbol] = prev;
+            } else if (ltp > 0 && !cache[item.symbol]) {
+                cache[item.symbol] = ltp;
+            }
+        });
+        localStorage.setItem('cache_previousDayLtp', JSON.stringify(cache));
+    } catch (e) {}
+}
+
+// Seed previous day LTP from initial cached market data if available
+if (Array.isArray(liveMarketData) && liveMarketData.length > 0) {
+    saveBulkPreviousDayLtp(liveMarketData);
+}
+
 // Tracks which watchlist alerts have been shown this browser session
 // to avoid repeat pop-ups on every re-render
 const wlAlertsShownThisSession = new Set();
@@ -146,6 +188,10 @@ function switchTab(tabId) {
         if (mobileMoreModal) mobileMoreModal.classList.remove('active');
     }
 
+    if (tabId === 'live') {
+        fetchAndRenderNepseIndex();
+    }
+
     if (tabId === '52week' && hlMarketData.length === 0) {
         fetch52WeekData();
     }
@@ -254,7 +300,8 @@ async function updateCashBalance(amount, actionType) {
 }
 
 function updateCashDisplay() {
-    document.getElementById('portfolio-cash').textContent = `Rs ${currentCash.toFixed(2)}`;
+    const cashEl = document.getElementById('portfolio-cash');
+    if (cashEl) cashEl.textContent = `Rs ${currentCash.toFixed(2)}`;
     const initEl = document.getElementById('portfolio-initial-invested');
     if (initEl) initEl.textContent = `Rs ${totalDeposited.toFixed(2)}`;
 }
@@ -642,9 +689,77 @@ function updatePortfolio() {
         const actualInvested = h.invested - (h.bonusCost || 0);
         totalInvested += actualInvested;
         
-        let ltp = h.wacc;
+        // 1. Check for live stock in liveMarketData (from Sharesansar)
         const liveStock = liveMarketData.find(s => s.symbol === symbol);
-        if (liveStock) ltp = parseFloat(liveStock.ltp.replace(/,/g, ''));
+        const liveLtp = liveStock && liveStock.ltp ? parseFloat(String(liveStock.ltp).replace(/,/g, '')) : 0;
+        const prevClose = liveStock && liveStock.prevClose ? parseFloat(String(liveStock.prevClose).replace(/,/g, '')) : 0;
+
+        let ltp = 0;
+        let isPrevLtp = false;
+        let hasLivePrice = false;
+        let chPt = 0;
+        let chPerc = 0;
+
+        if (liveLtp > 0) {
+            // Live traded LTP from Sharesansar available
+            ltp = liveLtp;
+            hasLivePrice = true;
+            isPrevLtp = false;
+
+            // Point Change (ch: pt)
+            if (liveStock.diff !== undefined && liveStock.diff !== '' && !isNaN(parseFloat(String(liveStock.diff).replace(/,/g, '')))) {
+                chPt = parseFloat(String(liveStock.diff).replace(/,/g, ''));
+            } else if (prevClose > 0) {
+                chPt = ltp - prevClose;
+            }
+
+            // Percentage Change (CH: %)
+            if (liveStock.percDiff !== undefined && liveStock.percDiff !== '' && !isNaN(parseFloat(String(liveStock.percDiff).replace(/,/g, '').replace(/%/g, '')))) {
+                chPerc = parseFloat(String(liveStock.percDiff).replace(/,/g, '').replace(/%/g, ''));
+            } else if (prevClose > 0) {
+                chPerc = (chPt / prevClose) * 100;
+            }
+
+            if (prevClose > 0) setCachedPreviousDayLtp(symbol, prevClose);
+        } else {
+            // No latest LTP from live sansar: USE PREVIOUS DAY LTP, NOT WACC PRICE!
+            isPrevLtp = true;
+            hasLivePrice = false;
+
+            if (prevClose > 0) {
+                ltp = prevClose;
+            } else {
+                const cachedPrev = getCachedPreviousDayLtp(symbol);
+                if (cachedPrev > 0) {
+                    ltp = cachedPrev;
+                } else if (Array.isArray(stocksDatabaseData) && stocksDatabaseData.length > 0) {
+                    const dbStock = stocksDatabaseData.find(s => s.symbol === symbol);
+                    if (dbStock) {
+                        const dbPrev = parseFloat(String(dbStock.prevClose || dbStock.ltp || 0).replace(/,/g, ''));
+                        if (dbPrev > 0) ltp = dbPrev;
+                    }
+                } else if (setupHistoricalCache[symbol] && setupHistoricalCache[symbol].length > 0) {
+                    const candles = setupHistoricalCache[symbol];
+                    const lastCandle = candles[candles.length - 1];
+                    if (lastCandle && lastCandle.close > 0) {
+                        ltp = lastCandle.close;
+                    }
+                }
+            }
+
+            // Fallback only if no market history exists anywhere
+            if (ltp <= 0) {
+                ltp = h.wacc;
+            }
+
+            // Point change and % change from previous close session
+            if (liveStock && liveStock.diff !== undefined && liveStock.diff !== '' && !isNaN(parseFloat(String(liveStock.diff).replace(/,/g, '')))) {
+                chPt = parseFloat(String(liveStock.diff).replace(/,/g, ''));
+            }
+            if (liveStock && liveStock.percDiff !== undefined && liveStock.percDiff !== '' && !isNaN(parseFloat(String(liveStock.percDiff).replace(/,/g, '').replace(/%/g, '')))) {
+                chPerc = parseFloat(String(liveStock.percDiff).replace(/,/g, '').replace(/%/g, ''));
+            }
+        }
 
         // Calculate potential net receivable if sold today (assume short-term tax for conservative estimate)
         const fees = calculateNepseFees('SELL', h.qty, ltp, h.wacc, false);
@@ -662,6 +777,10 @@ function updatePortfolio() {
             qty: h.qty,
             wacc: h.wacc,
             ltp,
+            chPt,
+            chPerc,
+            isPrevLtp,
+            hasLivePrice,
             actualInvested,
             currentValue,
             netReceivable,
@@ -717,12 +836,16 @@ function updatePortfolio() {
 
             filteredItems.forEach(item => {
                 const plClass = item.pl >= 0 ? 'positive' : 'negative';
+                const chClass = item.chPt > 0 ? 'positive' : (item.chPt < 0 ? 'negative' : '');
+                const chPtSign = item.chPt > 0 ? '+' : '';
+                const chPercSign = item.chPerc > 0 ? '+' : '';
+
                 const card = document.createElement('div');
 
-                // --- Detect target hit and stop loss hit (only when live price is available) ---
-                const hasLivePrice = liveMarketData.some(s => s.symbol === item.symbol);
-                const isTargetHit = hasLivePrice && item.targetPrice && parseFloat(item.targetPrice) > 0 && item.ltp >= parseFloat(item.targetPrice);
-                const isSlHit     = hasLivePrice && item.stopLoss  && parseFloat(item.stopLoss)  > 0 && item.ltp <= parseFloat(item.stopLoss);
+                // --- Detect target hit and stop loss hit ---
+                const hasPrice = item.hasLivePrice || (item.ltp > 0);
+                const isTargetHit = hasPrice && item.targetPrice && parseFloat(item.targetPrice) > 0 && item.ltp >= parseFloat(item.targetPrice);
+                const isSlHit     = hasPrice && item.stopLoss  && parseFloat(item.stopLoss)  > 0 && item.ltp <= parseFloat(item.stopLoss);
 
                 // Apply blink classes
                 let cardClass = 'portfolio-card';
@@ -738,20 +861,30 @@ function updatePortfolio() {
                     alertBadgeHtml = `<span class="portfolio-alert-badge badge-sl"><i class="ph ph-warning"></i> SL HIT ⚠️</span>`;
                 }
 
+                const prevDayTag = item.isPrevLtp ? `<span class="prev-day-tag" title="No live trades today; showing previous day LTP from Sharesansar">Prev Day</span>` : '';
                 const targetDisplay = item.targetPrice ? `<span class="positive">Rs ${parseFloat(item.targetPrice).toFixed(2)}</span>` : '<span class="text-secondary">—</span>';
                 const slDisplay = item.stopLoss ? `<span class="negative">Rs ${parseFloat(item.stopLoss).toFixed(2)}</span>` : '<span class="text-secondary">—</span>';
 
                 card.innerHTML = `
                     <div class="portfolio-card-header">
                         <div class="symbol-wrap" style="flex-direction:column; align-items:flex-start; gap:0.3rem;">
-                            <button type="button" class="stock-symbol-btn stock-tx-trigger-btn" data-symbol="${item.symbol}" title="Click to view transaction history for ${item.symbol}">
-                                <i class="ph ph-clock-counter-clockwise"></i> ${item.symbol}
-                            </button>
+                            <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                                <button type="button" class="stock-symbol-btn stock-tx-trigger-btn" data-symbol="${item.symbol}" title="Click to view transaction history for ${item.symbol}">
+                                    <i class="ph ph-clock-counter-clockwise"></i> ${item.symbol}
+                                </button>
+                                <button type="button" class="market-depth-btn" onclick="window.open('https://nepsealpha.com/trading/1/market?script=${item.symbol}', '_blank')" title="View live order book for ${item.symbol}">
+                                    <i class="ph ph-books"></i> Market Depth
+                                </button>
+                            </div>
                             ${alertBadgeHtml}
                         </div>
                         <div class="ltp-wrap">
-                            <span class="text-sm text-secondary" style="display:block; font-size:0.75rem;">LTP</span>
+                            <span class="text-sm text-secondary" style="display:block; font-size:0.75rem;">LTP ${prevDayTag}</span>
                             <span class="ltp-val" style="color: ${isTargetHit ? '#10b981' : isSlHit ? '#ef4444' : 'inherit'};">Rs ${item.ltp.toFixed(2)}</span>
+                            <div class="ltp-change-inline ${chClass}">
+                                <span>${chPtSign}${item.chPt.toFixed(2)} pt</span>
+                                <span>(${chPercSign}${item.chPerc.toFixed(2)}%)</span>
+                            </div>
                         </div>
                     </div>
                     <div class="portfolio-card-stats">
@@ -762,6 +895,14 @@ function updatePortfolio() {
                         <div class="stat-item">
                             <span class="stat-label">WACC Price</span>
                             <span class="stat-val">Rs ${item.wacc.toFixed(2)}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Ch: pt</span>
+                            <span class="stat-val ${chClass}">${chPtSign}${item.chPt.toFixed(2)}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">CH: %</span>
+                            <span class="stat-val ${chClass}">${chPercSign}${item.chPerc.toFixed(2)}%</span>
                         </div>
                         <div class="stat-item">
                             <span class="stat-label">Current Inv.</span>
@@ -808,6 +949,8 @@ function updatePortfolio() {
                         <th>Qty</th>
                         <th>WACC</th>
                         <th>LTP</th>
+                        <th>Ch: pt</th>
+                        <th>CH: %</th>
                         <th>Current Inv.</th>
                         <th>Current Value</th>
                         <th>P&L (Net)</th>
@@ -823,12 +966,16 @@ function updatePortfolio() {
             const tbody = table.querySelector('tbody');
             filteredItems.forEach(item => {
                 const plClass = item.pl >= 0 ? 'positive' : 'negative';
+                const chClass = item.chPt > 0 ? 'positive' : (item.chPt < 0 ? 'negative' : '');
+                const chPtSign = item.chPt > 0 ? '+' : '';
+                const chPercSign = item.chPerc > 0 ? '+' : '';
+
                 const tr = document.createElement('tr');
 
                 // --- Detect target hit and stop loss hit for table rows ---
-                const hasLivePrice = liveMarketData.some(s => s.symbol === item.symbol);
-                const isTargetHit = hasLivePrice && item.targetPrice && parseFloat(item.targetPrice) > 0 && item.ltp >= parseFloat(item.targetPrice);
-                const isSlHit     = hasLivePrice && item.stopLoss  && parseFloat(item.stopLoss)  > 0 && item.ltp <= parseFloat(item.stopLoss);
+                const hasPrice = item.hasLivePrice || (item.ltp > 0);
+                const isTargetHit = hasPrice && item.targetPrice && parseFloat(item.targetPrice) > 0 && item.ltp >= parseFloat(item.targetPrice);
+                const isSlHit     = hasPrice && item.stopLoss  && parseFloat(item.stopLoss)  > 0 && item.ltp <= parseFloat(item.stopLoss);
 
                 if (isTargetHit) tr.classList.add('portfolio-row-target-hit');
                 else if (isSlHit) tr.classList.add('portfolio-row-sl-hit');
@@ -841,15 +988,24 @@ function updatePortfolio() {
                 if (isTargetHit) rowAlertBadge = ` <span class="portfolio-alert-badge badge-target" style="font-size:0.65rem;">🎯 HIT</span>`;
                 else if (isSlHit) rowAlertBadge = ` <span class="portfolio-alert-badge badge-sl" style="font-size:0.65rem;">⚠️ SL</span>`;
 
+                const prevTag = item.isPrevLtp ? ` <span class="prev-day-tag" style="font-size:0.65rem;" title="Previous Day LTP">Prev</span>` : '';
+
                 tr.innerHTML = `
                     <td>
-                        <button type="button" class="stock-symbol-btn stock-tx-trigger-btn" data-symbol="${item.symbol}" title="View transaction history for ${item.symbol}">
-                            ${item.symbol}
-                        </button>${rowAlertBadge}
+                        <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
+                            <button type="button" class="stock-symbol-btn stock-tx-trigger-btn" data-symbol="${item.symbol}" title="View transaction history for ${item.symbol}">
+                                ${item.symbol}
+                            </button>
+                            <button type="button" class="market-depth-btn" onclick="window.open('https://nepsealpha.com/trading/1/market?script=${item.symbol}', '_blank')" title="Live order book">
+                                <i class="ph ph-books"></i> Depth
+                            </button>
+                        </div>${rowAlertBadge}
                     </td>
                     <td>${item.qty}</td>
                     <td>Rs ${item.wacc.toFixed(2)}</td>
-                    <td style="color: ${isTargetHit ? '#10b981' : isSlHit ? '#ef4444' : 'inherit'}; font-weight: ${(isTargetHit || isSlHit) ? '700' : '400'};">Rs ${item.ltp.toFixed(2)}</td>
+                    <td style="color: ${isTargetHit ? '#10b981' : isSlHit ? '#ef4444' : 'inherit'}; font-weight: ${(isTargetHit || isSlHit) ? '700' : '400'};">Rs ${item.ltp.toFixed(2)}${prevTag}</td>
+                    <td class="${chClass}" style="font-weight: 600;">${chPtSign}${item.chPt.toFixed(2)}</td>
+                    <td><span class="badge ${chClass}">${chPercSign}${item.chPerc.toFixed(2)}%</span></td>
                     <td>Rs ${item.actualInvested.toFixed(2)}</td>
                     <td>Rs ${item.currentValue.toFixed(2)}</td>
                     <td class="${plClass}">${item.pl >= 0 ? '+' : ''}Rs ${item.pl.toFixed(2)}</td>
@@ -1249,14 +1405,37 @@ function renderWatchlist() {
     watchlistTableBody.innerHTML = '';
 
     if (watchlistData.length === 0) {
-        watchlistTableBody.innerHTML = '<tr><td colspan="9" class="text-center">Watchlist is empty.</td></tr>';
+        watchlistTableBody.innerHTML = '<tr><td colspan="11" class="text-center">Watchlist is empty.</td></tr>';
         return;
     }
 
     watchlistData.forEach(data => {
         let ltp = 0;
+        let chPt = 0;
+        let chPerc = 0;
         const liveStock = liveMarketData.find(s => s.symbol === data.symbol);
-        if (liveStock) ltp = parseFloat(liveStock.ltp.replace(/,/g, ''));
+        if (liveStock) {
+            ltp = parseFloat(String(liveStock.ltp || '').replace(/,/g, '')) || 0;
+            if (ltp <= 0 && liveStock.prevClose) {
+                ltp = parseFloat(String(liveStock.prevClose).replace(/,/g, '')) || 0;
+            }
+
+            const prevClose = liveStock.prevClose ? parseFloat(String(liveStock.prevClose).replace(/,/g, '')) : 0;
+            if (liveStock.diff !== undefined && liveStock.diff !== '' && !isNaN(parseFloat(String(liveStock.diff).replace(/,/g, '')))) {
+                chPt = parseFloat(String(liveStock.diff).replace(/,/g, ''));
+            } else if (prevClose > 0 && ltp > 0) {
+                chPt = ltp - prevClose;
+            }
+
+            if (liveStock.percDiff !== undefined && liveStock.percDiff !== '' && !isNaN(parseFloat(String(liveStock.percDiff).replace(/,/g, '').replace(/%/g, '')))) {
+                chPerc = parseFloat(String(liveStock.percDiff).replace(/,/g, '').replace(/%/g, ''));
+            } else if (prevClose > 0 && chPt !== 0) {
+                chPerc = (chPt / prevClose) * 100;
+            }
+        }
+        if (ltp <= 0) {
+            ltp = getCachedPreviousDayLtp(data.symbol);
+        }
         
         // --- Buy alert: LTP <= targetBuy ---
         const isBuyHit  = ltp > 0 && ltp <= data.targetBuy;
@@ -1324,11 +1503,17 @@ function renderWatchlist() {
                     ? '<span class="badge negative">Hit! ⚠️</span>'
                     : '<span class="badge">Waiting</span>';
 
+        const chClass = chPt > 0 ? 'positive' : (chPt < 0 ? 'negative' : '');
+        const chPtSign = chPt > 0 ? '+' : '';
+        const chPercSign = chPerc > 0 ? '+' : '';
+
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td><strong>${data.symbol}</strong></td>
-            <td>Rs ${ltp || 'N/A'}</td>
-            <td>Rs ${data.targetBuy}</td>
+            <td>Rs ${ltp > 0 ? ltp.toFixed(2) : 'N/A'}</td>
+            <td class="${chClass}" style="font-weight: 600;">${chPt !== 0 ? `${chPtSign}${chPt.toFixed(2)}` : '0.00'}</td>
+            <td><span class="badge ${chClass}">${chPerc !== 0 ? `${chPercSign}${chPerc.toFixed(2)}%` : '0.00%'}</span></td>
+            <td>Rs ${data.targetBuy ? parseFloat(data.targetBuy).toFixed(2) : '0.00'}</td>
             <td>${hasTp ? `<span class="positive">Rs ${parseFloat(data.takeProfit).toFixed(2)}</span>` : '<span class="text-sm">—</span>'}</td>
             <td>${hasSl ? `<span class="negative">Rs ${parseFloat(data.stopLoss).toFixed(2)}</span>` : '<span class="text-sm">—</span>'}</td>
             <td>${buyBadge}</td>
@@ -1374,6 +1559,49 @@ wlForm.addEventListener('submit', async (e) => {
 });
 
 
+// --- NEPSE Index Fetch & Render ---
+async function fetchAndRenderNepseIndex() {
+    const indexValueEl = document.getElementById('nepse-index-value');
+    const pointChangeEl = document.getElementById('nepse-point-change');
+    const percChangeEl  = document.getElementById('nepse-perc-change');
+    const statusDot     = document.getElementById('nepse-index-status');
+    if (!indexValueEl) return;
+
+    try {
+        const res = await fetch(`${API_BASE}/api/nepse-index`);
+        if (!res.ok) throw new Error('Index fetch failed');
+        const json = await res.json();
+        const d = json.data || {};
+
+        if (d.index && d.index > 0) {
+            indexValueEl.textContent = d.index.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            const ptChg  = d.pointChange || 0;
+            const pctChg = d.percChange  || 0;
+            const isUp   = ptChg >= 0;
+            const ptSign = isUp ? '+' : '';
+
+            pointChangeEl.textContent = `${ptSign}${ptChg.toFixed(2)} pts`;
+            pointChangeEl.className   = `nepse-pt-change ${isUp ? 'positive' : 'negative'}`;
+
+            percChangeEl.textContent  = `${ptSign}${pctChg.toFixed(2)}%`;
+            percChangeEl.className    = `nepse-perc-badge ${isUp ? '' : 'negative'}`;
+
+            // Tint the index value itself
+            indexValueEl.style.color = isUp ? 'var(--green-500)' : 'var(--red-500)';
+
+            // Pulse dot if market data available
+            if (statusDot) statusDot.className = 'nepse-status-dot live';
+        } else {
+            indexValueEl.textContent = 'N/A';
+            if (statusDot) statusDot.className = 'nepse-status-dot';
+        }
+    } catch (err) {
+        console.warn('NEPSE index fetch failed:', err.message);
+        if (indexValueEl) indexValueEl.textContent = 'Unavailable';
+    }
+}
+
 // --- Live Market API Fetching ---
 async function fetchLivePrices() {
     const sysStatus = document.getElementById('system-status');
@@ -1386,9 +1614,11 @@ async function fetchLivePrices() {
         const data = await response.json();
         liveMarketData = data.data || [];
         localStorage.setItem('cache_liveMarketData', JSON.stringify(liveMarketData));
+        saveBulkPreviousDayLtp(liveMarketData);
 
         renderLiveTable();
         updatePortfolio();
+        fetchAndRenderNepseIndex(); // Refresh NEPSE index alongside live data
         
         // Trigger watchlist re-render to update LTPs (don't re-attach listener, just re-render)
         if (watchlistData.length > 0) renderWatchlist();

@@ -150,94 +150,138 @@ async function sendEmail(to, subject, text) {
     throw new Error('No working email provider configured (set RESEND_API_KEY or EMAIL_USER/EMAIL_PASS).');
 }
 
+// Scrape today-share-price helper to ensure all NEPSE stocks have prevClose and data
+async function scrapeTodaySharePrice() {
+    const cached = cache.get('sharesansar-today-share-price');
+    if (cached) return cached;
+
+    try {
+        const todayUrl = 'https://www.sharesansar.com/today-share-price';
+        const todayRes = await axios.get(todayUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120' },
+            timeout: 25000
+        });
+        const $today = cheerio.load(todayRes.data);
+        const list = [];
+        $today('table#headFixed tbody tr').each((index, element) => {
+            const tds = $today(element).find('td');
+            if (tds.length >= 18) {
+                const symbol = $today(tds[1]).text().trim();
+                const open = $today(tds[3]).text().trim();
+                const high = $today(tds[4]).text().trim();
+                const low = $today(tds[5]).text().trim();
+                const close = $today(tds[6]).text().trim();
+                const ltp = $today(tds[7]).text().trim() || close;
+                const volume = $today(tds[11]).text().trim();
+                const prevClose = $today(tds[12]).text().trim();
+                const diff = $today(tds[15]).text().trim();
+                const percDiff = $today(tds[17]).text().trim();
+
+                if (symbol && symbol !== 'Symbol') {
+                    list.push({
+                        symbol,
+                        ltp: ltp || '0',
+                        diff: diff || '0',
+                        percDiff: percDiff || '0',
+                        open: open || '0',
+                        high: high || '0',
+                        low: low || '0',
+                        volume: volume || '0',
+                        prevClose: prevClose || '0'
+                    });
+                }
+            }
+        });
+        if (list.length > 0) {
+            cache.set('sharesansar-today-share-price', list, 5 * 60 * 1000); // 5 min TTL
+        }
+        return list;
+    } catch (e) {
+        console.warn("scrapeTodaySharePrice error:", e.message);
+        return [];
+    }
+}
+
 // --- Shared Scraper Function ---
 // Scrapes https://www.sharesansar.com/live-trading which renders the full table server-side.
 // Verified columns (S.No, Symbol, LTP, Point Change, % Change, Open, High, Low, Volume, Prev.Close)
 async function scrapeLivePrices() {
     const url = 'https://www.sharesansar.com/live-trading';
-    const response = await axios.get(url, {
-        headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120'
-        },
-        timeout: 20000
-    });
+    let stocks = [];
 
-    const html = response.data;
-    const $ = cheerio.load(html);
+    try {
+        const response = await axios.get(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120'
+            },
+            timeout: 20000
+        });
 
-    const stocks = [];
+        const html = response.data;
+        const $ = cheerio.load(html);
 
-    // Table id="headFixed": col[0]=SNo, col[1]=Symbol, col[2]=LTP, col[3]=PointChange,
-    //                        col[4]=PercentChange, col[5]=Open, col[6]=High, col[7]=Low,
-    //                        col[8]=Volume, col[9]=PrevClose
-    $('table#headFixed tbody tr').each((index, element) => {
-        const tds = $(element).find('td');
-        if (tds.length >= 8) {
-            const symbol = $(tds[1]).text().trim();
-            const ltp = $(tds[2]).text().trim();
-            const diff = $(tds[3]).text().trim();
-            const percDiff = $(tds[4]).text().trim();
-            const high = $(tds[6]).text().trim();
-            const low = $(tds[7]).text().trim();
-            const volume = $(tds[8]).text().trim();
-            const prevClose = $(tds[9]).text().trim();
+        // Table id="headFixed": col[0]=SNo, col[1]=Symbol, col[2]=LTP, col[3]=PointChange,
+        //                        col[4]=PercentChange, col[5]=Open, col[6]=High, col[7]=Low,
+        //                        col[8]=Volume, col[9]=PrevClose
+        $('table#headFixed tbody tr').each((index, element) => {
+            const tds = $(element).find('td');
+            if (tds.length >= 8) {
+                const symbol = $(tds[1]).text().trim();
+                const ltp = $(tds[2]).text().trim();
+                const diff = $(tds[3]).text().trim();
+                const percDiff = $(tds[4]).text().trim();
+                const high = tds.length >= 7 ? $(tds[6]).text().trim() : '0';
+                const low = tds.length >= 8 ? $(tds[7]).text().trim() : '0';
+                const volume = tds.length >= 9 ? $(tds[8]).text().trim() : '0';
+                const prevClose = tds.length >= 10 ? $(tds[9]).text().trim() : '0';
 
-            if (symbol && symbol !== 'Symbol') {
-                stocks.push({
-                    symbol,
-                    ltp: ltp || '0',
-                    diff: diff || '0',
-                    percDiff: percDiff || '0',
-                    high: high || '0',
-                    low: low || '0',
-                    volume: volume || '0',
-                    prevClose: prevClose || '0'
-                });
+                if (symbol && symbol !== 'Symbol') {
+                    stocks.push({
+                        symbol,
+                        ltp: ltp || '0',
+                        diff: diff || '0',
+                        percDiff: percDiff || '0',
+                        high: high || '0',
+                        low: low || '0',
+                        volume: volume || '0',
+                        prevClose: prevClose || '0'
+                    });
+                }
             }
-        }
-    });
+        });
+    } catch (liveErr) {
+        console.warn("Sharesansar live-trading fetch failed:", liveErr.message);
+    }
 
-    // If live-trading is empty (e.g. holiday or pre-market), fallback to today-share-price which has all 350+ NEPSE stocks
-    if (stocks.length === 0) {
-        try {
-            const todayUrl = 'https://www.sharesansar.com/today-share-price';
-            const todayRes = await axios.get(todayUrl, {
-                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120' },
-                timeout: 25000
-            });
-            const $today = cheerio.load(todayRes.data);
-            $today('table#headFixed tbody tr').each((index, element) => {
-                const tds = $today(element).find('td');
-                if (tds.length >= 18) {
-                    const symbol = $today(tds[1]).text().trim();
-                    const open = $today(tds[3]).text().trim();
-                    const high = $today(tds[4]).text().trim();
-                    const low = $today(tds[5]).text().trim();
-                    const close = $today(tds[6]).text().trim();
-                    const ltp = $today(tds[7]).text().trim() || close;
-                    const volume = $today(tds[11]).text().trim();
-                    const prevClose = $today(tds[12]).text().trim();
-                    const diff = $today(tds[15]).text().trim();
-                    const percDiff = $today(tds[17]).text().trim();
+    // Always fetch/check today-share-price to ensure all 339+ NEPSE stocks are covered with prevClose
+    try {
+        const todayStocks = await scrapeTodaySharePrice();
+        if (stocks.length === 0) {
+            stocks = todayStocks;
+        } else if (todayStocks.length > 0) {
+            const existingSymbols = new Set(stocks.map(s => s.symbol));
+            const todayMap = new Map(todayStocks.map(s => [s.symbol, s]));
 
-                    if (symbol && symbol !== 'Symbol') {
-                        stocks.push({
-                            symbol,
-                            ltp: ltp || '0',
-                            diff: diff || '0',
-                            percDiff: percDiff || '0',
-                            open: open || '0',
-                            high: high || '0',
-                            low: low || '0',
-                            volume: volume || '0',
-                            prevClose: prevClose || '0'
-                        });
-                    }
+            // Ensure prevClose is filled for any live stock missing it
+            stocks.forEach(s => {
+                if ((!s.prevClose || s.prevClose === '0') && todayMap.has(s.symbol)) {
+                    s.prevClose = todayMap.get(s.symbol).prevClose;
                 }
             });
-        } catch (e) {
-            console.warn("Fallback to today-share-price failed:", e.message);
+
+            // Add stocks that were not traded today in live session (ltp = 0, but prevClose preserved)
+            todayStocks.forEach(ts => {
+                if (!existingSymbols.has(ts.symbol)) {
+                    stocks.push({
+                        ...ts,
+                        ltp: '0', // No live trades today
+                        source: 'sharesansar-today'
+                    });
+                }
+            });
         }
+    } catch (todayErr) {
+        console.warn("Supplementing with today-share-price failed:", todayErr.message);
     }
 
     // Third-tier fallback: Merolagani today-share-price page (reliable even on non-trading days)
@@ -736,6 +780,79 @@ app.get('/api/52week-prices', async (req, res) => {
     } catch (error) {
         console.error('52W error:', error.message);
         res.status(500).json({ success: false, error: 'Failed to fetch 52-week data: ' + error.message });
+    }
+});
+
+// --- NEPSE Index Scraper ---
+async function scrapeNepseIndex() {
+    const cached = cache.get('nepse-index');
+    if (cached) return cached;
+
+    let indexValue = 0, pointChange = 0, percChange = 0;
+
+    // 1. Primary source: Merolagani Indices table (direct latest row, fast, highly reliable)
+    try {
+        const mlRes = await axios.get('https://merolagani.com/Indices.aspx', {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120' },
+            timeout: 12000
+        });
+        const $ml = cheerio.load(mlRes.data);
+        const firstRow = $ml('table tbody tr').first();
+        const cells = firstRow.find('td');
+        if (cells.length >= 5) {
+            const val = parseFloat($ml(cells[2]).text().trim().replace(/,/g, ''));
+            const chg = parseFloat($ml(cells[3]).text().trim().replace(/,/g, ''));
+            const pct = parseFloat($ml(cells[4]).text().trim().replace(/%/g, '').replace(/,/g, ''));
+            if (val > 0) {
+                indexValue = val;
+                pointChange = isNaN(chg) ? 0 : chg;
+                percChange = isNaN(pct) ? 0 : pct;
+            }
+        }
+    } catch (mlErr) {
+        console.warn('Merolagani Indices.aspx scrape failed:', mlErr.message);
+    }
+
+    // 2. Secondary source: Sharesansar live-trading / today-share-price fallback
+    if (indexValue === 0) {
+        try {
+            const liveRes = await axios.get('https://www.sharesansar.com/live-trading', {
+                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120' },
+                timeout: 15000
+            });
+            const $live = cheerio.load(liveRes.data);
+            $live('.market-cap-widget, .marketindex, .nepse-summary, .market-stat, .index-info, [class*="market"]').each((i, el) => {
+                const text = $live(el).text().trim();
+                const numMatch = text.match(/([\d,]+(?:\.\d+)?)/);
+                if (numMatch && parseFloat(numMatch[1].replace(/,/g, '')) > 1000) {
+                    indexValue = parseFloat(numMatch[1].replace(/,/g, ''));
+                }
+            });
+        } catch (ssErr) {
+            console.warn('Sharesansar live-trading fallback failed:', ssErr.message);
+        }
+    }
+
+    const result = {
+        index: indexValue,
+        pointChange: pointChange,
+        percChange: percChange,
+        lastUpdated: new Date().toISOString()
+    };
+    if (indexValue > 0) {
+        cache.set('nepse-index', result, CACHE_TTL_LIVE);
+    }
+    return result;
+}
+
+
+app.get('/api/nepse-index', async (req, res) => {
+    try {
+        const data = await scrapeNepseIndex();
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        console.error('NEPSE index error:', error.message);
+        res.status(500).json({ success: false, error: 'Failed to fetch NEPSE index.' });
     }
 });
 

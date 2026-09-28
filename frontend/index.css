@@ -855,6 +855,29 @@ input:focus, select:focus {
     font-weight: 700;
 }
 
+.prev-day-tag {
+    display: inline-block;
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    background: rgba(148, 163, 184, 0.15);
+    color: var(--text-secondary);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    vertical-align: middle;
+    margin-left: 0.25rem;
+}
+
+.ltp-change-inline {
+    font-size: 0.78rem;
+    font-weight: 600;
+    margin-top: 0.15rem;
+    display: flex;
+    gap: 0.35rem;
+    justify-content: flex-end;
+}
+
 .portfolio-card-stats {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -1105,4 +1128,278 @@ tr.portfolio-row-target-hit td {
 tr.portfolio-row-sl-hit td {
     animation: blink-row-sl 1.4s ease-in-out infinite;
     border-left: 3px solid #ef4444;
+}
+
+/* ==========================================================================
+   NEPSE Index Banner — Live Market Tab
+   ========================================================================== */
+.nepse-index-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.5rem;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(37,99,235,0.10) 0%, var(--bg-panel) 100%);
+    border: 1px solid rgba(37,99,235,0.2);
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    position: relative;
+    overflow: hidden;
+}
+
+.nepse-index-banner::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 4px; height: 100%;
+    background: linear-gradient(180deg, var(--accent), #10b981);
+    border-radius: 4px 0 0 4px;
+}
+
+.nepse-index-left {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.nepse-index-icon {
+    width: 48px; height: 48px;
+    background: rgba(37,99,235,0.15);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent);
+    font-size: 1.5rem;
+    border: 1px solid rgba(37,99,235,0.25);
+}
+
+.nepse-index-label {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    display: block;
+    margin-bottom: 0.25rem;
+}
+
+.nepse-index-value {
+    font-size: 2rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    color: var(--text-primary);
+    transition: color 0.3s ease;
+}
+
+.nepse-index-right {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+}
+
+.nepse-change-block {
+    text-align: right;
+}
+
+.nepse-change-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+    display: block;
+    margin-bottom: 0.3rem;
+}
+
+.nepse-changes {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    justify-content: flex-end;
+}
+
+.nepse-pt-change {
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.nepse-perc-badge {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    background: rgba(16,185,129,0.12);
+    color: var(--green-500);
+    border: 1px solid rgba(16,185,129,0.3);
+}
+
+.nepse-perc-badge.negative {
+    background: rgba(239,68,68,0.12);
+    color: var(--red-500);
+    border-color: rgba(239,68,68,0.3);
+}
+
+.nepse-status-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+.nepse-status-dot.live {
+    background: var(--green-500);
+    box-shadow: 0 0 10px var(--green-500);
+    animation: pulse-live 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-live {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.6); }
+    50% { box-shadow: 0 0 0 6px rgba(16,185,129,0); }
+}
+
+/* ==========================================================================
+   Portfolio Summary Card — Combined Single Container
+   ========================================================================== */
+.portfolio-summary-card {
+    padding: 1.25rem 1.5rem;
+    border-radius: 16px;
+}
+
+.portfolio-summary-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.25rem;
+    padding-bottom: 0.85rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.portfolio-summary-title {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+.portfolio-cash-actions {
+    display: flex;
+    gap: 0.35rem;
+    align-items: center;
+}
+
+.portfolio-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+}
+
+.summary-stat-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding: 1rem 1.25rem;
+    border-right: 1px solid var(--border-color);
+    position: relative;
+    transition: background 0.2s ease;
+}
+
+.summary-stat-item:last-child {
+    border-right: none;
+}
+
+.summary-stat-item:hover {
+    background: rgba(128,128,128,0.04);
+}
+
+.summary-stat-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.summary-stat-val {
+    font-size: 1.3rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    color: var(--text-primary);
+}
+
+.summary-pl-item {
+    background: linear-gradient(135deg, rgba(37,99,235,0.06) 0%, transparent 100%);
+}
+
+.summary-pl-item::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 3px;
+    background: linear-gradient(90deg, var(--accent), #10b981);
+    border-radius: 0;
+}
+
+/* Market Depth Button on Portfolio Cards */
+.market-depth-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.55rem;
+    border-radius: 6px;
+    border: 1px solid rgba(37,99,235,0.35);
+    background: rgba(37,99,235,0.08);
+    color: var(--accent);
+    font-size: 0.72rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+.market-depth-btn:hover {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(37,99,235,0.35);
+}
+
+.market-depth-btn i {
+    font-size: 0.85rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+    .portfolio-summary-grid { grid-template-columns: repeat(3, 1fr); }
+    .summary-stat-item:nth-child(3) { border-right: none; }
+    .summary-stat-item:nth-child(4) { border-top: 1px solid var(--border-color); }
+    .summary-stat-item:nth-child(5) { border-top: 1px solid var(--border-color); border-right: none; }
+}
+
+@media (max-width: 768px) {
+    .portfolio-summary-grid { grid-template-columns: repeat(2, 1fr); }
+    .summary-stat-item { border-right: 1px solid var(--border-color); }
+    .summary-stat-item:nth-child(2n) { border-right: none; }
+    .summary-stat-item:nth-child(3),
+    .summary-stat-item:nth-child(4),
+    .summary-stat-item:nth-child(5) { border-top: 1px solid var(--border-color); }
+    .summary-stat-item:nth-child(5) { grid-column: span 2; border-right: none; }
+    .summary-stat-val { font-size: 1.1rem; }
+    .nepse-index-banner { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
+    .nepse-index-right { width: 100%; justify-content: space-between; }
+    .nepse-change-block { text-align: left; }
+    .nepse-changes { justify-content: flex-start; }
+    .nepse-index-value { font-size: 1.6rem; }
 }
