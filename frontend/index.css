@@ -1349,23 +1349,21 @@ tr.portfolio-row-sl-hit td {
     border-radius: 0;
 }
 
-/* Market Depth Button on Portfolio Cards */
+/* Market Depth Button on Portfolio Cards & Table */
 .market-depth-btn {
     display: inline-flex;
     align-items: center;
-    gap: 0.3rem;
-    padding: 0.25rem 0.55rem;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
     border-radius: 6px;
     border: 1px solid rgba(37,99,235,0.35);
     background: rgba(37,99,235,0.08);
     color: var(--accent);
-    font-size: 0.72rem;
-    font-weight: 700;
     cursor: pointer;
     transition: all 0.18s ease;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .market-depth-btn:hover {
@@ -1377,7 +1375,7 @@ tr.portfolio-row-sl-hit td {
 }
 
 .market-depth-btn i {
-    font-size: 0.85rem;
+    font-size: 0.95rem;
 }
 
 /* Responsive adjustments */

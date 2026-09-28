@@ -868,12 +868,12 @@ function updatePortfolio() {
                 card.innerHTML = `
                     <div class="portfolio-card-header">
                         <div class="symbol-wrap" style="flex-direction:column; align-items:flex-start; gap:0.3rem;">
-                            <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                            <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
                                 <button type="button" class="stock-symbol-btn stock-tx-trigger-btn" data-symbol="${item.symbol}" title="Click to view transaction history for ${item.symbol}">
                                     <i class="ph ph-clock-counter-clockwise"></i> ${item.symbol}
                                 </button>
-                                <button type="button" class="market-depth-btn" onclick="window.open('https://nepsealpha.com/trading/1/market?script=${item.symbol}', '_blank')" title="View live order book for ${item.symbol}">
-                                    <i class="ph ph-books"></i> Market Depth
+                                <button type="button" class="market-depth-btn" onclick="window.open('https://nepsealpha.com/trading/1/market?script=${item.symbol}', '_blank')" title="Live Market Depth (Order Book) for ${item.symbol}">
+                                    <i class="ph ph-books"></i>
                                 </button>
                             </div>
                             ${alertBadgeHtml}
@@ -895,14 +895,6 @@ function updatePortfolio() {
                         <div class="stat-item">
                             <span class="stat-label">WACC Price</span>
                             <span class="stat-val">Rs ${item.wacc.toFixed(2)}</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Ch: pt</span>
-                            <span class="stat-val ${chClass}">${chPtSign}${item.chPt.toFixed(2)}</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">CH: %</span>
-                            <span class="stat-val ${chClass}">${chPercSign}${item.chPerc.toFixed(2)}%</span>
                         </div>
                         <div class="stat-item">
                             <span class="stat-label">Current Inv.</span>
@@ -996,8 +988,8 @@ function updatePortfolio() {
                             <button type="button" class="stock-symbol-btn stock-tx-trigger-btn" data-symbol="${item.symbol}" title="View transaction history for ${item.symbol}">
                                 ${item.symbol}
                             </button>
-                            <button type="button" class="market-depth-btn" onclick="window.open('https://nepsealpha.com/trading/1/market?script=${item.symbol}', '_blank')" title="Live order book">
-                                <i class="ph ph-books"></i> Depth
+                            <button type="button" class="market-depth-btn" onclick="window.open('https://nepsealpha.com/trading/1/market?script=${item.symbol}', '_blank')" title="Live Market Depth (Order Book) for ${item.symbol}">
+                                <i class="ph ph-books"></i>
                             </button>
                         </div>${rowAlertBadge}
                     </td>
