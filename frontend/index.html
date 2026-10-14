@@ -88,13 +88,25 @@
         <!-- Overlay for mobile sidebar -->
         <div id="sidebar-overlay" class="sidebar-overlay"></div>
 
-        <main class="content-area">
+        <main class="content-area" id="content-area">
+            <!-- Pull-to-Refresh Indicator -->
+            <div id="pull-to-refresh" class="pull-to-refresh-indicator">
+                <i class="ph ph-arrows-clockwise pull-refresh-icon"></i>
+                <span class="pull-refresh-text">Pull down to refresh</span>
+            </div>
+
             <!-- Top Bar -->
             <header class="topbar">
                 <h2 id="current-tab-title">Portfolio</h2>
-                <div class="status-indicator">
-                    <span class="dot active"></span>
-                    <span id="system-status">System Online</span>
+                <div class="topbar-right">
+                    <div class="ltp-timestamp" id="ltp-timestamp">
+                        <i class="ph ph-clock"></i>
+                        <span id="ltp-updated-time">—</span>
+                    </div>
+                    <div class="status-indicator">
+                        <span class="dot active"></span>
+                        <span id="system-status">Live</span>
+                    </div>
                 </div>
             </header>
 
@@ -129,7 +141,7 @@
                                 <i class="ph ph-magnifying-glass"></i>
                                 <input type="text" id="live-search-input" placeholder="Search Symbol...">
                             </div>
-                            <button id="refresh-live-btn" class="secondary-btn"><i class="ph ph-arrows-clockwise"></i> Refresh</button>
+
                         </div>
                     </div>
                     <div class="table-container">

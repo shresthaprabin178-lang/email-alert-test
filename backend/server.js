@@ -409,12 +409,13 @@ app.get('/api/stocks', async (req, res) => {
 app.get('/api/live-prices', async (req, res) => {
     try {
         const cached = cache.get('live-prices');
+        const cachedNepse = cache.get('nepse-index') || null;
         if (cached) {
-            return res.status(200).json({ success: true, data: cached, cached: true });
+            return res.status(200).json({ success: true, data: cached, nepseIndex: cachedNepse, cached: true });
         }
         const stocks = await scrapeLivePrices();
         cache.set('live-prices', stocks, CACHE_TTL_LIVE);
-        res.status(200).json({ success: true, data: stocks });
+        res.status(200).json({ success: true, data: stocks, nepseIndex: cachedNepse });
     } catch (error) {
         console.error("Scraping error:", error.message);
         res.status(500).json({ success: false, error: 'Failed to fetch live prices.' });
@@ -1106,11 +1107,10 @@ cron.schedule('*/5 * * * *', () => {
     }
 });
 
-// Also run once immediately on server startup
-checkAlerts();
-
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Backend running perfectly on port ${PORT}`);
     console.log(`Background alert checker scheduled to run 24/7 every 5 minutes.`);
+    // Run initial alert check in background after server has started listening
+    checkAlerts().catch(err => console.error("Initial checkAlerts error:", err.message));
 });
