@@ -868,80 +868,80 @@ function updatePortfolio() {
                 const isTargetHit = hasPrice && item.targetPrice && parseFloat(item.targetPrice) > 0 && item.ltp >= parseFloat(item.targetPrice);
                 const isSlHit     = hasPrice && item.stopLoss  && parseFloat(item.stopLoss)  > 0 && item.ltp <= parseFloat(item.stopLoss);
 
-                // Apply blink classes
+                // Apply alert classes (subtle border accent, no excessive glow)
                 let cardClass = 'portfolio-card';
                 if (isTargetHit) cardClass += ' target-hit';
                 else if (isSlHit) cardClass += ' sl-hit';
                 card.className = cardClass;
 
-                // Alert status badge for header
+                // Alert status badge for header - compact inline tag
                 let alertBadgeHtml = '';
                 if (isTargetHit) {
-                    alertBadgeHtml = `<span class="portfolio-alert-badge badge-target"><i class="ph ph-check-circle"></i> TARGET HIT 🎯</span>`;
+                    alertBadgeHtml = `<span class="portfolio-alert-badge badge-target" title="Target Hit">🎯 TP</span>`;
                 } else if (isSlHit) {
-                    alertBadgeHtml = `<span class="portfolio-alert-badge badge-sl"><i class="ph ph-warning"></i> SL HIT ⚠️</span>`;
+                    alertBadgeHtml = `<span class="portfolio-alert-badge badge-sl" title="Stop Loss Hit">⚠️ SL</span>`;
                 }
 
-                const prevDayTag = item.isPrevLtp ? `<span class="prev-day-tag" title="No live trades today; showing previous day LTP from Sharesansar">Prev Day</span>` : '';
-                const targetDisplay = item.targetPrice ? `<span class="positive">Rs ${parseFloat(item.targetPrice).toFixed(2)}</span>` : '<span class="text-secondary">—</span>';
-                const slDisplay = item.stopLoss ? `<span class="negative">Rs ${parseFloat(item.stopLoss).toFixed(2)}</span>` : '<span class="text-secondary">—</span>';
+                const prevDayTag = item.isPrevLtp ? `<span class="prev-day-tag" title="Previous day LTP">Prev</span>` : '';
+                const targetDisplay = item.targetPrice ? `Rs ${parseFloat(item.targetPrice).toFixed(1)}` : '—';
+                const slDisplay = item.stopLoss ? `Rs ${parseFloat(item.stopLoss).toFixed(1)}` : '—';
 
                 card.innerHTML = `
                     <div class="portfolio-card-header">
-                        <div class="symbol-wrap" style="flex-direction:column; align-items:flex-start; gap:0.3rem;">
-                            <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
-                                <button type="button" class="stock-symbol-btn stock-tx-trigger-btn" data-symbol="${item.symbol}" title="Click to view transaction history for ${item.symbol}">
-                                    <i class="ph ph-clock-counter-clockwise"></i> ${item.symbol}
-                                </button>
-                                <button type="button" class="market-depth-btn" onclick="window.open('https://nepsealpha.com/trading/1/market?script=${item.symbol}', '_blank')" title="Live Market Depth (Order Book) for ${item.symbol}">
-                                    <i class="ph ph-books"></i>
-                                </button>
-                            </div>
+                        <div class="symbol-wrap">
+                            <button type="button" class="stock-symbol-btn stock-tx-trigger-btn" data-symbol="${item.symbol}" title="Transactions for ${item.symbol}">
+                                <i class="ph ph-clock-counter-clockwise"></i> ${item.symbol}
+                            </button>
+                            <button type="button" class="market-depth-btn" onclick="window.open('https://nepsealpha.com/trading/1/market?script=${item.symbol}', '_blank')" title="Live Market Depth for ${item.symbol}">
+                                <i class="ph ph-books"></i>
+                            </button>
                             ${alertBadgeHtml}
                         </div>
                         <div class="ltp-wrap">
-                            <span class="text-sm text-secondary" style="display:block; font-size:0.75rem;">LTP ${prevDayTag}</span>
-                            <span class="ltp-val" style="color: ${isTargetHit ? '#10b981' : isSlHit ? '#ef4444' : 'inherit'};">Rs ${item.ltp.toFixed(2)}</span>
+                            <div class="ltp-val-row">
+                                <span class="ltp-lbl">LTP${prevDayTag ? ' ' + prevDayTag : ''}</span>
+                                <span class="ltp-val" style="color: ${isTargetHit ? '#10b981' : isSlHit ? '#ef4444' : 'inherit'};">Rs ${item.ltp.toFixed(2)}</span>
+                            </div>
                             <div class="ltp-change-inline ${chClass}">
-                                <span>${chPtSign}${item.chPt.toFixed(2)} pt</span>
+                                <span>${chPtSign}${item.chPt.toFixed(1)}</span>
                                 <span>(${chPercSign}${item.chPerc.toFixed(2)}%)</span>
                             </div>
                         </div>
                     </div>
                     <div class="portfolio-card-stats">
                         <div class="stat-item">
-                            <span class="stat-label">Holding Qty</span>
-                            <span class="stat-val">${item.qty} shares</span>
+                            <span class="stat-label">Qty</span>
+                            <span class="stat-val">${item.qty}</span>
                         </div>
                         <div class="stat-item">
-                            <span class="stat-label">WACC Price</span>
-                            <span class="stat-val">Rs ${item.wacc.toFixed(2)}</span>
+                            <span class="stat-label">WACC</span>
+                            <span class="stat-val">Rs ${item.wacc.toFixed(1)}</span>
                         </div>
                         <div class="stat-item">
-                            <span class="stat-label">Current Inv.</span>
-                            <span class="stat-val">Rs ${item.actualInvested.toFixed(2)}</span>
+                            <span class="stat-label">Value</span>
+                            <span class="stat-val">Rs ${Math.round(item.currentValue).toLocaleString('en-IN')}</span>
                         </div>
                         <div class="stat-item">
-                            <span class="stat-label">Current Value</span>
-                            <span class="stat-val">Rs ${item.currentValue.toFixed(2)}</span>
+                            <span class="stat-label">Inv</span>
+                            <span class="stat-val">Rs ${Math.round(item.actualInvested).toLocaleString('en-IN')}</span>
                         </div>
                         <div class="stat-item">
-                            <span class="stat-label">Target Buy/TP</span>
-                            <span class="stat-val">${targetDisplay}</span>
+                            <span class="stat-label">Target</span>
+                            <span class="stat-val ${item.targetPrice ? 'positive' : ''}">${targetDisplay}</span>
                         </div>
                         <div class="stat-item">
                             <span class="stat-label">Stop Loss</span>
-                            <span class="stat-val">${slDisplay}</span>
+                            <span class="stat-val ${item.stopLoss ? 'negative' : ''}">${slDisplay}</span>
                         </div>
                     </div>
                     <div class="portfolio-card-footer">
                         <div class="pl-pill">
-                            <span class="pl-amount ${plClass}">${item.pl >= 0 ? '+' : ''}Rs ${item.pl.toFixed(2)}</span>
+                            <span class="pl-amount ${plClass}">${item.pl >= 0 ? '+' : ''}Rs ${item.pl.toLocaleString('en-IN', {minimumFractionDigits: 1, maximumFractionDigits: 1})}</span>
                             <span class="pl-perc-badge badge ${plClass}">${item.pl >= 0 ? '+' : ''}${item.plPerc.toFixed(2)}%</span>
                         </div>
                         <div class="card-actions">
-                            <button class="primary-btn btn-small sell-action-btn" data-symbol="${item.symbol}" data-qty="${item.qty}" data-ltp="${item.ltp}">Sell</button>
                             <button class="secondary-btn btn-small edit-targets-btn" data-symbol="${item.symbol}" data-target="${item.targetPrice || ''}" data-sl="${item.stopLoss || ''}" title="Set Price Alerts"><i class="ph ph-bell"></i></button>
+                            <button class="primary-btn btn-small sell-action-btn" data-symbol="${item.symbol}" data-qty="${item.qty}" data-ltp="${item.ltp}">Sell</button>
                         </div>
                     </div>
                 `;

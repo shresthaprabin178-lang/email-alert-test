@@ -31,14 +31,6 @@
 
     <!-- Dashboard Screen -->
     <div id="dashboard-screen" class="screen">
-        <!-- Mobile Header -->
-        <div class="mobile-header">
-            <div class="brand">
-                <div class="logo-glow"></div>
-                <h2>StockAlerts</h2>
-            </div>
-            <button id="mobile-menu-btn"><i class="ph ph-list"></i></button>
-        </div>
 
         <!-- Sidebar -->
         <nav class="sidebar glass-panel" id="sidebar">
@@ -89,6 +81,15 @@
         <div id="sidebar-overlay" class="sidebar-overlay"></div>
 
         <main class="content-area" id="content-area">
+            <!-- Mobile Header (non-sticky, scrolls away naturally with content) -->
+            <div class="mobile-header">
+                <div class="brand">
+                    <div class="logo-glow"></div>
+                    <h2>StockAlerts</h2>
+                </div>
+                <button id="mobile-menu-btn" aria-label="Open navigation menu"><i class="ph ph-list"></i></button>
+            </div>
+
             <!-- Pull-to-Refresh Indicator -->
             <div id="pull-to-refresh" class="pull-to-refresh-indicator">
                 <i class="ph ph-arrows-clockwise pull-refresh-icon"></i>
