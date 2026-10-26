@@ -1,6 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { getFirestore, collection, addDoc, query, where, deleteDoc, doc, onSnapshot, getDoc, setDoc, updateDoc, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { initPerformanceModule, updatePerformanceData, refreshPerformanceTheme } from './performance/performance.js';
 
 const firebaseConfig = {
     apiKey: "AIzaSyCCzyvBtibx9ag-EU6SUsKRHtBiwcnaFTE",
@@ -149,6 +150,7 @@ themeToggleBtn.addEventListener('click', () => {
         themeToggleBtn.innerHTML = '<i class="ph ph-moon"></i> <span>Dark Mode</span>';
         localStorage.setItem('theme', 'theme-light');
     }
+    refreshPerformanceTheme();
 });
 
 mobileMenuBtn.addEventListener('click', () => {
@@ -193,6 +195,7 @@ function switchTab(tabId) {
         'live': 'Live Market', 
         'portfolio': 'Portfolio', 
         'transactions': 'Transactions', 
+        'performance': 'Trading Performance & Analytics',
         'watchlist': 'Watchlist', 
         '52week': '52-Week H/L Screener',
         'setup': 'Swing Trading Setup',
@@ -208,6 +211,10 @@ function switchTab(tabId) {
 
     if (tabId === 'live') {
         fetchAndRenderNepseIndex();
+    }
+
+    if (tabId === 'performance') {
+        updatePerformanceData(transactionsData, liveMarketData);
     }
 
     if (tabId === '52week' && hlMarketData.length === 0) {
@@ -472,6 +479,7 @@ function listenToTransactions() {
         });
 
         updatePortfolio();
+        updatePerformanceData(transactionsData, liveMarketData);
     });
 }
 
@@ -626,6 +634,7 @@ function computeHoldings() {
 // --- Portfolio Controls & Event Listeners ---
 document.addEventListener('DOMContentLoaded', () => {
     setupPortfolioControls();
+    initPerformanceModule();
 });
 
 function setupPortfolioControls() {

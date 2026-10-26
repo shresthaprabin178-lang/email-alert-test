@@ -9,6 +9,7 @@
     <!-- Phosphor Icons for modern sleek icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <link rel="stylesheet" href="index.css">
+    <link rel="stylesheet" href="performance/performance.css">
 </head>
 <body class="theme-dark">
     <!-- Login Screen -->
@@ -48,6 +49,9 @@
                 </li>
                 <li data-tab="transactions">
                     <i class="ph ph-arrows-left-right"></i> Transactions
+                </li>
+                <li data-tab="performance">
+                    <i class="ph ph-chart-pie-slice"></i> Performance
                 </li>
                 <li data-tab="watchlist">
                     <i class="ph ph-eye"></i> Watchlist
@@ -318,6 +322,11 @@
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <!-- Tab Content: Performance -->
+            <div id="tab-performance" class="tab-content">
+                <!-- Dynamically populated by frontend/performance/performance.js -->
             </div>
 
             <!-- Tab Content: Watchlist -->
@@ -854,6 +863,10 @@
                 <button type="button" class="btn-icon close-modal"><i class="ph ph-x"></i></button>
             </div>
             <div class="mobile-more-grid">
+                <div class="more-nav-card" data-tab="performance">
+                    <i class="ph ph-chart-pie-slice"></i>
+                    <span>Performance</span>
+                </div>
                 <div class="more-nav-card" data-tab="52week">
                     <i class="ph ph-chart-line-up"></i>
                     <span>52-Week H/L</span>

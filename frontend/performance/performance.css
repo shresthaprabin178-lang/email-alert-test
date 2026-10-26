@@ -1,0 +1,640 @@
+/* ==========================================================================
+   Trading Performance & Analytics Stylesheet
+   Location: frontend/performance/performance.css
+   ========================================================================== */
+
+/* Container & Header */
+.performance-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    padding-bottom: 2rem;
+}
+
+.perf-header-banner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    padding: 1.25rem 1.5rem;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(16, 185, 129, 0.1));
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    position: relative;
+    overflow: hidden;
+}
+
+body.theme-light .perf-header-banner {
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(16, 185, 129, 0.08));
+    border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.perf-header-left {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.perf-header-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--blue-500), #8b5cf6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    color: #fff;
+    box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);
+    flex-shrink: 0;
+}
+
+.perf-header-title h3 {
+    font-size: 1.35rem;
+    font-weight: 700;
+    margin-bottom: 0.2rem;
+    letter-spacing: -0.02em;
+}
+
+.perf-header-title p {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.perf-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+/* Mode Switcher: Closed Trades vs Open Trades */
+.perf-tab-pills {
+    display: flex;
+    background: var(--bg-input);
+    padding: 3px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    gap: 4px;
+}
+
+.perf-pill-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    padding: 0.45rem 0.9rem;
+    border-radius: 7px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.perf-pill-btn.active {
+    background: var(--accent);
+    color: #ffffff;
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+}
+
+.perf-pill-btn:hover:not(.active) {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+/* Primary KPI Stats Grid */
+.perf-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+}
+
+.perf-stat-card {
+    padding: 1.25rem 1.4rem;
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.perf-stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+}
+
+.perf-stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: transparent;
+    transition: background 0.3s ease;
+}
+
+.perf-stat-card.card-win::before {
+    background: linear-gradient(90deg, #10b981, #34d399);
+}
+
+.perf-stat-card.card-loss::before {
+    background: linear-gradient(90deg, #ef4444, #f87171);
+}
+
+.perf-stat-card.card-pnl::before {
+    background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+}
+
+.perf-stat-card.card-total::before {
+    background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.perf-stat-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.6rem;
+}
+
+.perf-stat-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+}
+
+.perf-stat-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+}
+
+.perf-stat-icon.win {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--green-500);
+}
+
+.perf-stat-icon.loss {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--red-500);
+}
+
+.perf-stat-icon.pnl {
+    background: rgba(59, 130, 246, 0.15);
+    color: #3b82f6;
+}
+
+.perf-stat-icon.total {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--yellow-500);
+}
+
+.perf-stat-val {
+    font-size: 1.65rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.4rem;
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+}
+
+.perf-stat-sub {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+/* Secondary Advanced Stats Row */
+.perf-secondary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 0.85rem;
+}
+
+.perf-mini-stat {
+    padding: 0.9rem 1.1rem;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.perf-mini-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.perf-mini-val {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.perf-mini-sub {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+}
+
+/* Charts Grid Layout */
+.perf-charts-row {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 1.25rem;
+}
+
+@media (max-width: 1024px) {
+    .perf-charts-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+.perf-chart-card {
+    padding: 1.35rem;
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+}
+
+.perf-chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.1rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.perf-chart-header h4 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.perf-chart-header-sub {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+
+/* Donut Chart with center readout */
+.donut-chart-wrapper {
+    position: relative;
+    width: 100%;
+    max-width: 240px;
+    margin: 0 auto;
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.donut-center-text {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    text-align: center;
+}
+
+.donut-center-val {
+    font-size: 1.65rem;
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+}
+
+.donut-center-lbl {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 0.15rem;
+}
+
+/* Win / Loss Legend */
+.perf-donut-legend {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin-top: 1.2rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.donut-legend-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.85rem;
+}
+
+.legend-item-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-secondary);
+}
+
+.legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.legend-dot.win {
+    background: var(--green-500);
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+}
+
+.legend-dot.loss {
+    background: var(--red-500);
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+}
+
+.legend-dot.even {
+    background: #94a3b8;
+}
+
+.legend-item-right {
+    font-weight: 700;
+}
+
+/* Chart Canvas Containers */
+.perf-canvas-box {
+    position: relative;
+    width: 100%;
+    min-height: 260px;
+    height: 280px;
+}
+
+/* Filter Controls Toolbar */
+.perf-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.85rem;
+    margin-bottom: 1rem;
+}
+
+.perf-toolbar-left {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.perf-filter-btn {
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    padding: 0.45rem 0.85rem;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.perf-filter-btn.active {
+    background: var(--accent);
+    color: #ffffff;
+    border-color: var(--accent);
+}
+
+.perf-filter-btn:hover:not(.active) {
+    border-color: rgba(255, 255, 255, 0.2);
+    color: var(--text-primary);
+}
+
+.perf-filter-count {
+    padding: 0.1rem 0.4rem;
+    border-radius: 10px;
+    font-size: 0.7rem;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.perf-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+/* Trade Table Styling */
+.perf-table-wrapper {
+    overflow-x: auto;
+    border-radius: 12px;
+}
+
+.perf-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+    text-align: left;
+}
+
+.perf-table th {
+    background: rgba(15, 23, 42, 0.4);
+    padding: 0.75rem 0.9rem;
+    font-weight: 600;
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+}
+
+body.theme-light .perf-table th {
+    background: rgba(241, 245, 249, 0.7);
+}
+
+.perf-table td {
+    padding: 0.85rem 0.9rem;
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.perf-table tbody tr {
+    transition: background 0.15s ease;
+}
+
+.perf-table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+body.theme-light .perf-table tbody tr:hover {
+    background: rgba(0, 0, 0, 0.02);
+}
+
+/* Status Badges */
+.perf-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.perf-badge.win {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--green-500);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.perf-badge.loss {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--red-500);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.perf-badge.even {
+    background: rgba(148, 163, 184, 0.15);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+/* Stock Symbol Pill */
+.perf-symbol-pill {
+    font-weight: 700;
+    color: var(--text-primary);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.perf-symbol-pill i {
+    font-size: 0.9rem;
+    color: var(--accent);
+}
+
+/* Leaderboard & Stock Breakdown Grid */
+.perf-leaderboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+}
+
+@media (max-width: 768px) {
+    .perf-leaderboard-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.perf-leader-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin-top: 0.5rem;
+}
+
+.perf-leader-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.65rem 0.9rem;
+    border-radius: 10px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+}
+
+.perf-leader-left {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.perf-leader-rank {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+}
+
+.perf-leader-sym {
+    font-weight: 700;
+    font-size: 0.9rem;
+}
+
+.perf-leader-trades {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+}
+
+.perf-leader-right {
+    text-align: right;
+}
+
+.perf-leader-pnl {
+    font-weight: 700;
+    font-size: 0.92rem;
+}
+
+/* Empty State */
+.perf-empty-state {
+    text-align: center;
+    padding: 3.5rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+}
+
+.perf-empty-icon {
+    width: 68px;
+    height: 68px;
+    border-radius: 20px;
+    background: rgba(37, 99, 235, 0.1);
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.2rem;
+}
+
+.perf-empty-state h3 {
+    font-size: 1.25rem;
+    font-weight: 700;
+}
+
+.perf-empty-state p {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    max-width: 460px;
+    line-height: 1.5;
+}
