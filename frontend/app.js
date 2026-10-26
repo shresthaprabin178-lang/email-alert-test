@@ -868,18 +868,18 @@ function updatePortfolio() {
                 const isTargetHit = hasPrice && item.targetPrice && parseFloat(item.targetPrice) > 0 && item.ltp >= parseFloat(item.targetPrice);
                 const isSlHit     = hasPrice && item.stopLoss  && parseFloat(item.stopLoss)  > 0 && item.ltp <= parseFloat(item.stopLoss);
 
-                // Apply alert classes (subtle border accent, no excessive glow)
+                // Apply alert classes (continuous flashing animation)
                 let cardClass = 'portfolio-card';
                 if (isTargetHit) cardClass += ' target-hit';
                 else if (isSlHit) cardClass += ' sl-hit';
                 card.className = cardClass;
 
-                // Alert status badge for header - compact inline tag
+                // Alert status badge with flashing animation
                 let alertBadgeHtml = '';
                 if (isTargetHit) {
-                    alertBadgeHtml = `<span class="portfolio-alert-badge badge-target" title="Target Hit">🎯 TP</span>`;
+                    alertBadgeHtml = `<span class="portfolio-alert-badge badge-target" title="Target Price Hit!"><i class="ph ph-check-circle"></i> TARGET HIT 🎯</span>`;
                 } else if (isSlHit) {
-                    alertBadgeHtml = `<span class="portfolio-alert-badge badge-sl" title="Stop Loss Hit">⚠️ SL</span>`;
+                    alertBadgeHtml = `<span class="portfolio-alert-badge badge-sl" title="Stop Loss Triggered!"><i class="ph ph-warning"></i> SL HIT ⚠️</span>`;
                 }
 
                 const prevDayTag = item.isPrevLtp ? `<span class="prev-day-tag" title="Previous day LTP">Prev</span>` : '';
@@ -888,19 +888,21 @@ function updatePortfolio() {
 
                 card.innerHTML = `
                     <div class="portfolio-card-header">
-                        <div class="symbol-wrap">
-                            <button type="button" class="stock-symbol-btn stock-tx-trigger-btn" data-symbol="${item.symbol}" title="Transactions for ${item.symbol}">
-                                <i class="ph ph-clock-counter-clockwise"></i> ${item.symbol}
-                            </button>
-                            <button type="button" class="market-depth-btn" onclick="window.open('https://nepsealpha.com/trading/1/market?script=${item.symbol}', '_blank')" title="Live Market Depth for ${item.symbol}">
-                                <i class="ph ph-books"></i>
-                            </button>
-                            ${alertBadgeHtml}
+                        <div class="symbol-col">
+                            <div class="symbol-wrap">
+                                <button type="button" class="stock-symbol-btn stock-tx-trigger-btn" data-symbol="${item.symbol}" title="View transaction history for ${item.symbol}">
+                                    <i class="ph ph-clock-counter-clockwise"></i> ${item.symbol}
+                                </button>
+                                <button type="button" class="market-depth-btn" onclick="window.open('https://nepsealpha.com/trading/1/market?script=${item.symbol}', '_blank')" title="Live Market Depth for ${item.symbol}">
+                                    <i class="ph ph-books"></i>
+                                </button>
+                            </div>
+                            ${alertBadgeHtml ? `<div class="card-alert-row">${alertBadgeHtml}</div>` : ''}
                         </div>
                         <div class="ltp-wrap">
                             <div class="ltp-val-row">
                                 <span class="ltp-lbl">LTP${prevDayTag ? ' ' + prevDayTag : ''}</span>
-                                <span class="ltp-val" style="color: ${isTargetHit ? '#10b981' : isSlHit ? '#ef4444' : 'inherit'};">Rs ${item.ltp.toFixed(2)}</span>
+                                <span class="ltp-val ${isTargetHit ? 'text-target-hit' : isSlHit ? 'text-sl-hit' : ''}">Rs ${item.ltp.toFixed(2)}</span>
                             </div>
                             <div class="ltp-change-inline ${chClass}">
                                 <span>${chPtSign}${item.chPt.toFixed(1)}</span>
@@ -911,7 +913,7 @@ function updatePortfolio() {
                     <div class="portfolio-card-stats">
                         <div class="stat-item">
                             <span class="stat-label">Qty</span>
-                            <span class="stat-val">${item.qty}</span>
+                            <span class="stat-val">${item.qty.toLocaleString()}</span>
                         </div>
                         <div class="stat-item">
                             <span class="stat-label">WACC</span>
@@ -927,17 +929,20 @@ function updatePortfolio() {
                         </div>
                         <div class="stat-item">
                             <span class="stat-label">Target</span>
-                            <span class="stat-val ${item.targetPrice ? 'positive' : ''}">${targetDisplay}</span>
+                            <span class="stat-val ${item.targetPrice ? 'positive' : 'text-muted'}">${targetDisplay}</span>
                         </div>
                         <div class="stat-item">
                             <span class="stat-label">Stop Loss</span>
-                            <span class="stat-val ${item.stopLoss ? 'negative' : ''}">${slDisplay}</span>
+                            <span class="stat-val ${item.stopLoss ? 'negative' : 'text-muted'}">${slDisplay}</span>
                         </div>
                     </div>
                     <div class="portfolio-card-footer">
                         <div class="pl-pill">
-                            <span class="pl-amount ${plClass}">${item.pl >= 0 ? '+' : ''}Rs ${item.pl.toLocaleString('en-IN', {minimumFractionDigits: 1, maximumFractionDigits: 1})}</span>
-                            <span class="pl-perc-badge badge ${plClass}">${item.pl >= 0 ? '+' : ''}${item.plPerc.toFixed(2)}%</span>
+                            <span class="pl-label">Unrealized P&L</span>
+                            <div class="pl-amount-wrap">
+                                <span class="pl-amount ${plClass}">${item.pl >= 0 ? '+' : ''}Rs ${item.pl.toLocaleString('en-IN', {minimumFractionDigits: 1, maximumFractionDigits: 1})}</span>
+                                <span class="pl-perc-badge badge ${plClass}">${item.pl >= 0 ? '+' : ''}${item.plPerc.toFixed(2)}%</span>
+                            </div>
                         </div>
                         <div class="card-actions">
                             <button class="secondary-btn btn-small edit-targets-btn" data-symbol="${item.symbol}" data-target="${item.targetPrice || ''}" data-sl="${item.stopLoss || ''}" title="Set Price Alerts"><i class="ph ph-bell"></i></button>
