@@ -893,8 +893,8 @@ function updatePortfolio() {
                                 <button type="button" class="stock-symbol-btn stock-tx-trigger-btn" data-symbol="${item.symbol}" title="View transaction history for ${item.symbol}">
                                     <i class="ph ph-clock-counter-clockwise"></i> ${item.symbol}
                                 </button>
-                                <button type="button" class="market-depth-btn" onclick="window.open('https://nepsealpha.com/trading/1/market?script=${item.symbol}', '_blank')" title="Live Market Depth for ${item.symbol}">
-                                    <i class="ph ph-books"></i>
+                                <button type="button" class="market-depth-btn" onclick="window.open('https://nepalytix.com/chart?s1=${item.symbol}&i1=1D', '_blank')" title="View Chart for ${item.symbol}">
+                                    <i class="ph ph-binoculars"></i>
                                 </button>
                             </div>
                             ${alertBadgeHtml ? `<div class="card-alert-row">${alertBadgeHtml}</div>` : ''}
@@ -1014,8 +1014,8 @@ function updatePortfolio() {
                             <button type="button" class="stock-symbol-btn stock-tx-trigger-btn" data-symbol="${item.symbol}" title="View transaction history for ${item.symbol}">
                                 ${item.symbol}
                             </button>
-                            <button type="button" class="market-depth-btn" onclick="window.open('https://nepsealpha.com/trading/1/market?script=${item.symbol}', '_blank')" title="Live Market Depth (Order Book) for ${item.symbol}">
-                                <i class="ph ph-books"></i>
+                            <button type="button" class="market-depth-btn" onclick="window.open('https://nepalytix.com/chart?s1=${item.symbol}&i1=1D', '_blank')" title="View Chart for ${item.symbol}">
+                                <i class="ph ph-binoculars"></i>
                             </button>
                         </div>${rowAlertBadge}
                     </td>
