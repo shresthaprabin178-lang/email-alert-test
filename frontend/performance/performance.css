@@ -638,3 +638,56 @@ body.theme-light .perf-table tbody tr:hover {
     max-width: 460px;
     line-height: 1.5;
 }
+
+/* ==========================================================================
+   Midnight Theme Overrides for Performance Tab
+   ========================================================================== */
+body.theme-midnight .perf-header-banner {
+    background: linear-gradient(135deg, rgba(21, 88, 201, 0.22), rgba(212, 255, 36, 0.08));
+    border: 1px solid rgba(21, 88, 201, 0.35);
+    box-shadow: 0 4px 20px rgba(3, 4, 7, 0.6);
+}
+
+body.theme-midnight .perf-header-icon {
+    background: linear-gradient(135deg, #1558c9, #0d3b8c);
+    color: #d4ff24;
+    box-shadow: 0 0 15px rgba(21, 88, 201, 0.5);
+}
+
+body.theme-midnight .perf-pill-btn.active {
+    background: linear-gradient(135deg, #1558c9, #0f46a3);
+    color: #ffffff;
+    box-shadow: 0 2px 10px rgba(21, 88, 201, 0.45);
+    border: 1px solid rgba(212, 255, 36, 0.3);
+}
+
+body.theme-midnight .perf-tab-pills {
+    border-color: rgba(21, 88, 201, 0.3);
+}
+
+body.theme-midnight .perf-badge.win {
+    background: rgba(212, 255, 36, 0.15);
+    color: #d4ff24;
+    border: 1px solid rgba(212, 255, 36, 0.35);
+}
+
+body.theme-midnight .perf-table th {
+    background: rgba(7, 10, 18, 0.95);
+    border-bottom: 1px solid rgba(21, 88, 201, 0.25);
+}
+
+body.theme-midnight .perf-table tbody tr:hover {
+    background: rgba(21, 88, 201, 0.08);
+}
+
+body.theme-midnight .perf-empty-icon {
+    background: rgba(21, 88, 201, 0.18);
+    color: #d4ff24;
+    border: 1px solid rgba(21, 88, 201, 0.35);
+}
+
+body.theme-midnight .perf-stat-card:hover {
+    border-color: rgba(21, 88, 201, 0.4);
+    box-shadow: 0 10px 25px -5px rgba(21, 88, 201, 0.25);
+}
+

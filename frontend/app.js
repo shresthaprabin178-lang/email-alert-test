@@ -130,28 +130,53 @@ const stocksTableBody = document.getElementById('stocks-table-body');
 const wlForm = document.getElementById('watchlist-form');
 
 // --- Theme Persistence & Initialization ---
-const savedTheme = localStorage.getItem('theme') || 'theme-dark';
-document.body.className = savedTheme;
-if (savedTheme === 'theme-light') {
-    themeToggleBtn.innerHTML = '<i class="ph ph-moon"></i> <span>Dark Mode</span>';
-} else {
-    themeToggleBtn.innerHTML = '<i class="ph ph-sun"></i> <span>Light Mode</span>';
-}
+const THEME_OPTIONS = [
+    {
+        id: 'theme-dark',
+        name: 'Dark Mode',
+        nextId: 'theme-light',
+        nextLabel: 'Light Mode',
+        nextIcon: 'ph-sun'
+    },
+    {
+        id: 'theme-light',
+        name: 'Light Mode',
+        nextId: 'theme-midnight',
+        nextLabel: 'Midnight Mode',
+        nextIcon: 'ph-lightning'
+    },
+    {
+        id: 'theme-midnight',
+        name: 'Midnight Mode',
+        nextId: 'theme-dark',
+        nextLabel: 'Dark Mode',
+        nextIcon: 'ph-moon'
+    }
+];
 
-themeToggleBtn.addEventListener('click', () => {
-    const body = document.body;
-    const isLight = body.classList.contains('theme-light');
-    if (isLight) {
-        body.className = 'theme-dark';
-        themeToggleBtn.innerHTML = '<i class="ph ph-sun"></i> <span>Light Mode</span>';
-        localStorage.setItem('theme', 'theme-dark');
-    } else {
-        body.className = 'theme-light';
-        themeToggleBtn.innerHTML = '<i class="ph ph-moon"></i> <span>Dark Mode</span>';
-        localStorage.setItem('theme', 'theme-light');
+function applyTheme(themeId) {
+    const active = THEME_OPTIONS.find(t => t.id === themeId) || THEME_OPTIONS[0];
+    document.body.className = active.id;
+    localStorage.setItem('theme', active.id);
+    if (themeToggleBtn) {
+        themeToggleBtn.innerHTML = `<i class="ph ${active.nextIcon}"></i> <span>${active.nextLabel}</span>`;
+        themeToggleBtn.title = `Current: ${active.name} (Click to switch to ${active.nextLabel})`;
     }
     refreshPerformanceTheme();
-});
+}
+
+const savedTheme = localStorage.getItem('theme') || 'theme-dark';
+applyTheme(savedTheme);
+
+if (themeToggleBtn) {
+    themeToggleBtn.addEventListener('click', () => {
+        const currentThemeId = document.body.classList.contains('theme-midnight')
+            ? 'theme-midnight'
+            : (document.body.classList.contains('theme-light') ? 'theme-light' : 'theme-dark');
+        const current = THEME_OPTIONS.find(t => t.id === currentThemeId) || THEME_OPTIONS[0];
+        applyTheme(current.nextId);
+    });
+}
 
 mobileMenuBtn.addEventListener('click', () => {
     sidebar.classList.add('open');
@@ -2772,12 +2797,13 @@ function renderHistoricalChart(records, isPositive) {
     const volumes = records.map(r => r.volume || 0);
 
     const isLightMode = document.body.classList.contains('theme-light');
-    const gridColor = isLightMode ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.08)';
-    const textColor = isLightMode ? '#64748b' : '#94a3b8';
+    const isMidnight = document.body.classList.contains('theme-midnight');
+    const gridColor = isLightMode ? 'rgba(0, 0, 0, 0.06)' : (isMidnight ? 'rgba(21, 88, 201, 0.15)' : 'rgba(255, 255, 255, 0.08)');
+    const textColor = isLightMode ? '#64748b' : (isMidnight ? '#8da2c0' : '#94a3b8');
 
-    const lineColor = isPositive ? '#10b981' : '#ef4444';
-    const gradientTop = isPositive ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.35)';
-    const gradientBottom = isPositive ? 'rgba(16, 185, 129, 0.01)' : 'rgba(239, 68, 68, 0.01)';
+    const lineColor = isPositive ? (isMidnight ? '#d4ff24' : '#10b981') : '#ef4444';
+    const gradientTop = isPositive ? (isMidnight ? 'rgba(212, 255, 36, 0.35)' : 'rgba(16, 185, 129, 0.35)') : 'rgba(239, 68, 68, 0.35)';
+    const gradientBottom = isPositive ? (isMidnight ? 'rgba(212, 255, 36, 0.01)' : 'rgba(16, 185, 129, 0.01)') : 'rgba(239, 68, 68, 0.01)';
 
     const ctx = canvas.getContext('2d');
     const gradient = ctx.createLinearGradient(0, 0, 0, 320);
@@ -2806,7 +2832,7 @@ function renderHistoricalChart(records, isPositive) {
                     label: 'Volume',
                     type: 'bar',
                     data: volumes,
-                    backgroundColor: isLightMode ? 'rgba(99, 102, 241, 0.25)' : 'rgba(99, 102, 241, 0.35)',
+                    backgroundColor: isLightMode ? 'rgba(99, 102, 241, 0.25)' : (isMidnight ? 'rgba(21, 88, 201, 0.45)' : 'rgba(99, 102, 241, 0.35)'),
                     borderColor: 'transparent',
                     yAxisID: 'yVolume',
                     barPercentage: 0.6
@@ -2831,10 +2857,10 @@ function renderHistoricalChart(records, isPositive) {
                     }
                 },
                 tooltip: {
-                    backgroundColor: isLightMode ? 'rgba(255, 255, 255, 0.95)' : 'rgba(15, 23, 42, 0.95)',
-                    titleColor: isLightMode ? '#0f172a' : '#f8fafc',
-                    bodyColor: isLightMode ? '#334155' : '#cbd5e1',
-                    borderColor: isLightMode ? '#e2e8f0' : 'rgba(255, 255, 255, 0.1)',
+                    backgroundColor: isLightMode ? 'rgba(255, 255, 255, 0.95)' : (isMidnight ? 'rgba(3, 4, 7, 0.95)' : 'rgba(15, 23, 42, 0.95)'),
+                    titleColor: isLightMode ? '#0f172a' : (isMidnight ? '#d4ff24' : '#f8fafc'),
+                    bodyColor: isLightMode ? '#334155' : (isMidnight ? '#f8fafc' : '#cbd5e1'),
+                    borderColor: isLightMode ? '#e2e8f0' : (isMidnight ? 'rgba(21, 88, 201, 0.4)' : 'rgba(255, 255, 255, 0.1)'),
                     borderWidth: 1,
                     padding: 10,
                     callbacks: {

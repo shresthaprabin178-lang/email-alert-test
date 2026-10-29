@@ -36,6 +36,111 @@ body.theme-light {
 }
 
 /* ==========================================================================
+   Midnight Theme (Midnight Black #030407, Electric Cobalt Blue #1558c9, Acid Lime #d4ff24)
+   ========================================================================== */
+body.theme-midnight {
+    --bg-main: #030407; /* Midnight Black */
+    --bg-panel: rgba(8, 12, 22, 0.85);
+    --bg-input: rgba(12, 18, 32, 0.85);
+    --border-color: rgba(21, 88, 201, 0.22); /* Electric Cobalt Blue Tint */
+    --text-primary: #f8fafc;
+    --text-secondary: #8da2c0;
+    --accent: #1558c9; /* Electric Cobalt Blue */
+    --accent-hover: #1d6df4;
+    --accent-lime: #d4ff24; /* Acid Lime */
+    --green-500: #d4ff24; /* Acid Lime for positive market trends */
+    --shadow-sm: 0 4px 12px -1px rgba(0, 0, 0, 0.8);
+    --shadow-md: 0 10px 30px -5px rgba(21, 88, 201, 0.3);
+
+    background-color: #030407;
+    background-image: 
+        radial-gradient(circle at 12% 40%, rgba(21, 88, 201, 0.2), transparent 32%),
+        radial-gradient(circle at 88% 20%, rgba(212, 255, 36, 0.1), transparent 28%),
+        radial-gradient(circle at 50% 90%, rgba(21, 88, 201, 0.14), transparent 35%);
+    background-attachment: fixed;
+}
+
+body.theme-midnight .logo-glow {
+    background: #d4ff24;
+    box-shadow: 0 0 15px #d4ff24, 0 0 30px rgba(21, 88, 201, 0.7);
+}
+
+body.theme-midnight .primary-btn {
+    background: linear-gradient(135deg, #1558c9 0%, #0d429a 100%);
+    box-shadow: 0 4px 16px rgba(21, 88, 201, 0.45);
+    border: 1px solid rgba(212, 255, 36, 0.35);
+    color: #ffffff;
+}
+
+body.theme-midnight .primary-btn:hover {
+    background: linear-gradient(135deg, #1d6df4 0%, #1558c9 100%);
+    box-shadow: 0 6px 24px rgba(21, 88, 201, 0.65), 0 0 12px rgba(212, 255, 36, 0.35);
+    border-color: #d4ff24;
+}
+
+body.theme-midnight .nav-links li:hover {
+    background: rgba(21, 88, 201, 0.12);
+    color: #ffffff;
+}
+
+body.theme-midnight .nav-links li.active {
+    background: linear-gradient(135deg, rgba(21, 88, 201, 0.95), rgba(13, 66, 154, 0.9));
+    color: #ffffff;
+    border-left: 3px solid #d4ff24;
+    box-shadow: 0 4px 18px rgba(21, 88, 201, 0.45);
+}
+
+body.theme-midnight .login-card .glow {
+    background: radial-gradient(circle, rgba(21, 88, 201, 0.3) 0%, rgba(212, 255, 36, 0.12) 40%, transparent 70%);
+}
+
+body.theme-midnight input:focus,
+body.theme-midnight select:focus {
+    border-color: #1558c9;
+    box-shadow: 0 0 0 3px rgba(21, 88, 201, 0.25), 0 0 10px rgba(212, 255, 36, 0.2);
+}
+
+body.theme-midnight .positive {
+    color: #d4ff24 !important;
+    text-shadow: 0 0 10px rgba(212, 255, 36, 0.2);
+}
+
+body.theme-midnight .badge:not(.negative) {
+    background: rgba(212, 255, 36, 0.12);
+    color: #d4ff24;
+    border: 1px solid rgba(212, 255, 36, 0.3);
+}
+
+body.theme-midnight .metric-card.highlight::after {
+    background: linear-gradient(180deg, #d4ff24, #1558c9);
+}
+
+body.theme-midnight .dot.active {
+    background: #d4ff24;
+    box-shadow: 0 0 10px #d4ff24;
+}
+
+body.theme-midnight .glass-card:hover {
+    border-color: rgba(21, 88, 201, 0.45);
+    box-shadow: 0 10px 28px -5px rgba(21, 88, 201, 0.25);
+}
+
+body.theme-midnight tr:hover td {
+    background: rgba(21, 88, 201, 0.06);
+}
+
+body.theme-midnight .secondary-btn:hover {
+    border-color: rgba(21, 88, 201, 0.5);
+    background: rgba(21, 88, 201, 0.12);
+}
+
+body.theme-midnight .pull-to-refresh-indicator.refreshing .pull-refresh-text,
+body.theme-midnight .pull-refresh-icon {
+    color: #d4ff24;
+}
+
+
+/* ==========================================================================
    Base Styles & Reset
    ========================================================================== */
 * {

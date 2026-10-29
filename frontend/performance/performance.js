@@ -750,8 +750,14 @@ function renderCharts(allTrades, filteredTrades, metrics) {
     if (typeof window.Chart === 'undefined') return;
 
     const isLight = document.body.classList.contains('theme-light');
-    const textColor = isLight ? '#475569' : '#94a3b8';
-    const gridColor = isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.06)';
+    const isMidnight = document.body.classList.contains('theme-midnight');
+    const textColor = isLight ? '#475569' : (isMidnight ? '#8da2c0' : '#94a3b8');
+    const gridColor = isLight ? 'rgba(0, 0, 0, 0.06)' : (isMidnight ? 'rgba(21, 88, 201, 0.15)' : 'rgba(255, 255, 255, 0.06)');
+    const winColor = isMidnight ? '#d4ff24' : '#10b981';
+    const tooltipBg = isLight ? '#ffffff' : (isMidnight ? '#030407' : '#0f172a');
+    const tooltipTitle = isLight ? '#0f172a' : (isMidnight ? '#d4ff24' : '#f8fafc');
+    const tooltipBody = isLight ? '#475569' : (isMidnight ? '#f8fafc' : '#cbd5e1');
+    const tooltipBorder = isLight ? 'rgba(0,0,0,0.1)' : (isMidnight ? 'rgba(21, 88, 201, 0.4)' : 'rgba(255,255,255,0.1)');
 
     // 1. Donut Chart (Outcome Ratio)
     const donutEl = document.getElementById('perf-donut-chart');
@@ -759,7 +765,7 @@ function renderCharts(allTrades, filteredTrades, metrics) {
         if (donutChartInstance) donutChartInstance.destroy();
 
         const dataVals = [metrics.winCount, metrics.lossCount];
-        const colors = ['#10b981', '#ef4444'];
+        const colors = [winColor, '#ef4444'];
         if (metrics.evenCount > 0) {
             dataVals.push(metrics.evenCount);
             colors.push('#94a3b8');
@@ -772,7 +778,7 @@ function renderCharts(allTrades, filteredTrades, metrics) {
                 datasets: [{
                     data: dataVals,
                     backgroundColor: colors,
-                    borderColor: isLight ? '#ffffff' : '#1e293b',
+                    borderColor: isLight ? '#ffffff' : (isMidnight ? '#030407' : '#1e293b'),
                     borderWidth: 3,
                     hoverOffset: 6
                 }]
@@ -784,10 +790,10 @@ function renderCharts(allTrades, filteredTrades, metrics) {
                 plugins: {
                     legend: { display: false },
                     tooltip: {
-                        backgroundColor: isLight ? '#ffffff' : '#0f172a',
-                        titleColor: isLight ? '#0f172a' : '#f8fafc',
-                        bodyColor: isLight ? '#475569' : '#cbd5e1',
-                        borderColor: isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)',
+                        backgroundColor: tooltipBg,
+                        titleColor: tooltipTitle,
+                        bodyColor: tooltipBody,
+                        borderColor: tooltipBorder,
                         borderWidth: 1,
                         padding: 10,
                         callbacks: {
@@ -817,11 +823,11 @@ function renderCharts(allTrades, filteredTrades, metrics) {
 
         const finalPL = dataPoints[dataPoints.length - 1];
         const isOverallPositive = finalPL >= 0;
-        const mainColor = isOverallPositive ? '#10b981' : '#ef4444';
+        const mainColor = isOverallPositive ? winColor : '#ef4444';
 
         const ctx = equityEl.getContext('2d');
         const gradient = ctx.createLinearGradient(0, 0, 0, 240);
-        gradient.addColorStop(0, isOverallPositive ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.35)');
+        gradient.addColorStop(0, isOverallPositive ? (isMidnight ? 'rgba(212, 255, 36, 0.35)' : 'rgba(16, 185, 129, 0.35)') : 'rgba(239, 68, 68, 0.35)');
         gradient.addColorStop(1, 'rgba(0, 0, 0, 0.0)');
 
         equityChartInstance = new window.Chart(equityEl, {
@@ -867,10 +873,10 @@ function renderCharts(allTrades, filteredTrades, metrics) {
                 plugins: {
                     legend: { display: false },
                     tooltip: {
-                        backgroundColor: isLight ? '#ffffff' : '#0f172a',
-                        titleColor: isLight ? '#0f172a' : '#f8fafc',
-                        bodyColor: isLight ? '#475569' : '#cbd5e1',
-                        borderColor: isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)',
+                        backgroundColor: tooltipBg,
+                        titleColor: tooltipTitle,
+                        bodyColor: tooltipBody,
+                        borderColor: tooltipBorder,
                         borderWidth: 1,
                         padding: 12,
                         callbacks: {
@@ -889,7 +895,7 @@ function renderCharts(allTrades, filteredTrades, metrics) {
 
         const barLabels = filteredTrades.map(t => `${t.symbol} (#${t.tradeNumber})`);
         const barData = filteredTrades.map(t => Math.round(t.netProfit * 100) / 100);
-        const barColors = filteredTrades.map(t => t.status === 'WIN' ? '#10b981' : '#ef4444');
+        const barColors = filteredTrades.map(t => t.status === 'WIN' ? winColor : '#ef4444');
 
         pnlBarsChartInstance = new window.Chart(barsEl, {
             type: 'bar',
@@ -923,10 +929,10 @@ function renderCharts(allTrades, filteredTrades, metrics) {
                 plugins: {
                     legend: { display: false },
                     tooltip: {
-                        backgroundColor: isLight ? '#ffffff' : '#0f172a',
-                        titleColor: isLight ? '#0f172a' : '#f8fafc',
-                        bodyColor: isLight ? '#475569' : '#cbd5e1',
-                        borderColor: isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)',
+                        backgroundColor: tooltipBg,
+                        titleColor: tooltipTitle,
+                        bodyColor: tooltipBody,
+                        borderColor: tooltipBorder,
                         borderWidth: 1,
                         padding: 12,
                         callbacks: {
